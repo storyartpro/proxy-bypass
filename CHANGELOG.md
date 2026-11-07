@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.5] - 2026-11-07
+
+### Fixed
+
+- The app keeps its proxy credentials in sync with the local secrets file at startup and every
+  five minutes. A rotated provider password used to stay forever in the DPAPI-encrypted store, so
+  the only proxy was reported as "connect failed (2)" while the same credentials worked one minute
+  later in a direct test.
+
 ## [0.1.4] - 2026-11-07
 
 ### Fixed
@@ -107,3 +116,4 @@ First public release.
 [0.1.1]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.1
 [0.1.3]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.3
 [0.1.4]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.4
+[0.1.5]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.5

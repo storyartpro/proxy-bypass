@@ -42,26 +42,34 @@ const proxy = createLocalProxy({ router, port: config.port, log, stats });
 const monitor = new Monitor({ manager, log, stats });
 const state = { proxyRunning: false, pcProxyEnabled: false, pcProxyError: null, scannerTimer: null, lastScan: null };
 
-/** Fill empty SOCKS5 credentials from the secrets file on first start. */
+/** Fill/refresh SOCKS5 credentials from the secrets file.
+ *
+ * Providers rotate passwords, so an empty-or-stale store must be refreshed from
+ * the file the user already maintains instead of silently failing with the old
+ * password.
+ */
 async function hydrateProxyCredentials() {
   let changed = false;
   for (const item of config.proxies) {
-    if (item.type === "socks5" && !item.login && !item.password && config.secretsFile) {
-      try {
-        const upstream = readUpstream(config.secretsFile);
-        if (upstream.host === item.host) {
-          item.login = upstream.username || "";
-          item.password = upstream.password || "";
-          changed = true;
-        }
-      } catch {
-        /* the user can fill credentials in the UI */
+    if (item.type !== "socks5" || !config.secretsFile) continue;
+    try {
+      const upstream = readUpstream(config.secretsFile);
+      if (upstream.host !== item.host) continue;
+      if (upstream.port && Number(upstream.port) !== Number(item.port)) continue;
+      const nextLogin = upstream.username || "";
+      const nextPassword = upstream.password || "";
+      if (item.login !== nextLogin || item.password !== nextPassword) {
+        item.login = nextLogin;
+        item.password = nextPassword;
+        changed = true;
+        log("прокси: логин и пароль обновлены из файла секретов");
       }
+    } catch (error) {
+      log(`прокси: не удалось прочитать файл секретов (${error.message})`);
     }
   }
   if (changed) {
     config = await writeConfig(config);
-    log("прокси: логин и пароль подтянуты из файла секретов");
   }
 }
 
@@ -456,6 +464,16 @@ async function main() {
   log(`локальный прокси слушает 127.0.0.1:${config.port}`);
 
   await manager.start(20000);
+  // Passwords rotate outside the app: re-read the secrets file periodically so a
+  // stale credential cannot keep the only proxy marked as failing.
+  setInterval(() => {
+    hydrateProxyCredentials()
+      .then(() => {
+        manager.setProxies(config.proxies);
+        return manager.refresh();
+      })
+      .catch((error) => log(`обновление реквизитов: ${error.message}`));
+  }, 5 * 60_000).unref?.();
   monitor.start();
   scheduleScanner();
   setTimeout(() => scan().catch((error) => log(`первый скан: ${error.message}`)), 3000);
