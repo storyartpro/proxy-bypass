@@ -14,6 +14,7 @@ import tls from "node:tls";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { ipInCidr, isIpv4 } from "./targets.mjs";
 
 export const DEFAULT_PORT = 38080;
 export const USER_AGENT = "proxy-orchestrator-local/1.0";
@@ -467,6 +468,8 @@ export class LocalRouter {
     if (this.forced.has(name)) return true;
     for (const entry of this.forced) {
       if (name.endsWith(`.${entry}`)) return true;
+      // A subnet in the list pins every address inside it.
+      if (entry.includes("/") && isIpv4(name) && ipInCidr(name, entry)) return true;
     }
     return false;
   }

@@ -37,7 +37,7 @@ broken. Verdicts and rules are rebuilt on every sync; the service survives reboo
 | --- | --- |
 | Включить / Start | `systemctl start proxy-bypass` |
 | Выключить / Stop | `systemctl stop proxy-bypass` |
-| Передать список / Push list | `proxy-bypass add --domain <host> --pin` for each blocked host |
+| Передать список / Push list | `proxy-bypass add --domain <host> --pin` for each domain and `proxy-bypass add-ip --cidr <subnet>` for each IPv4 address/subnet |
 | Передать прокси / Push proxy | rewrite `redsocks.conf` upstream + `systemctl restart redsocks` |
 | Убрать / Remove | remove the server from the app list (does not uninstall) |
 
@@ -51,7 +51,9 @@ Pushing the proxy writes `/etc/redsocks.conf.bak.<timestamp>` first, then update
 - Logs: `journalctl -u proxy-bypass -n 100`.
 - Manual commands: `sudo -n /usr/local/sbin/proxy-bypass status --json`,
   `sync`, `check --domain <host>`, `add --domain <host> --pin`, `remove --domain <host>`,
-  `learn`, `daemon`.
+  `add-ip --cidr <subnet>`, `remove-ip --cidr <subnet>`, `learn`, `daemon`.
+- Static IP targets are kept in `state.json` (`subnets`) and rebuilt into the redirect chain on every
+  sync, so they survive daemon restarts and config updates.
 - Probes use `SO_MARK`, and a `-m mark --mark 0x1 -j RETURN` rule is kept first in `OUTPUT`, so the
   "direct" measurement is honest even while redirects are active.
 

@@ -11,6 +11,7 @@ import { UpstreamManager } from "./core/upstreams.mjs";
 import { enableSystemProxy, disableSystemProxy, readSystemProxy } from "./core/system-proxy.mjs";
 import { loadConfig, loadConfigAsync, writeConfig, dataRoot, defaultConfig } from "./core/store.mjs";
 import * as servers from "./core/servers.mjs";
+import { normalizeTarget } from "./core/targets.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UI = path.join(HERE, "ui");
@@ -245,15 +246,15 @@ const routes = {
   "POST /api/proxies/check": async () => ({ ok: true, ...(await manager.refresh()) }),
   "GET /api/blocked": async () => ({ ok: true, blocked: config.blocked, blockedCount: config.blocked.length }),
   "POST /api/blocked/add": async (body) => {
-    const host = String(body.host || "").trim().toLowerCase().replace(/\.$/, "");
-    if (!/^[a-z0-9][a-z0-9.-]*\.[a-z0-9-]{2,}$/.test(host)) throw new Error("некорректный домен");
+    const target = normalizeTarget(body.host);
+    const host = target.value;
     if (!config.blocked.includes(host)) {
       config.blocked.push(host);
       config = await writeConfig(config);
       syncForcedHosts();
-      log(`список: добавлен ${host}`);
+      log(`список: добавлен ${host} (${target.kind})`);
     }
-    return { ok: true, blocked: config.blocked };
+    return { ok: true, kind: target.kind, blocked: config.blocked };
   },
   "POST /api/blocked/remove": async (body) => {
     const host = String(body.host || "").trim().toLowerCase();

@@ -105,14 +105,15 @@
         </div>
       </div>
       <div class="row">
-        <input id="new-host" placeholder="домен, например example.com" />
+        <input id="new-host" placeholder="домен, IP или подсеть — например 203.0.113.0/24" />
         <button id="host-add">Добавить</button>
         <label class="switch"><input type="checkbox" id="scanner-enabled" /> автосканер</label>
         <label class="inline">каждые <input id="scanner-interval" type="number" min="2" value="15" class="tiny" /> мин</label>
         <label class="switch"><input type="checkbox" id="auto-push" /> автоотправка на серверы</label>
       </div>
+      <p class="muted">Поддерживаются домены (вместе с поддоменами), IPv4-адреса и подсети CIDR. IP-адреса на серверах добавляются в обход напрямую, без DNS.</p>
       <table class="grid" id="blocked-table">
-        <thead><tr><th>Домен</th><th></th></tr></thead>
+        <thead><tr><th>Адрес или подсеть</th><th>Тип</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       <p class="muted" id="scan-result"></p>

@@ -27,7 +27,9 @@ For every request the router asks `LocalRouter.routeFor(host, port)`:
 1. loopback, private ranges, `*.local`, `localhost` → **direct**;
 2. `deepseek.com` (the harness/account endpoints) → **direct**, so control traffic never leaves
    through a foreign exit;
-3. host present in the forced set (the blocked-host list from the UI) → **proxy**;
+3. host present in the forced set (the blocked-host list from the UI) → **proxy**. Entries may be
+   domains, IPv4 addresses or CIDR subnets; a subnet pins every address inside it and is checked
+   before the cached verdict;
 4. cached verdict → proxy only when the verdict is `blocked`;
 5. IP literal → reachability probe (direct TCP, then SOCKS) with a 15-minute cache;
 6. unknown domain → **direct now**, classification in the background. The next request already

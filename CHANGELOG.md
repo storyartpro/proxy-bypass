@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-11-07
+
+### Added
+
+- Blocked-list entries may now be IPv4 addresses and CIDR subnets in addition to domains
+  (for example `203.0.113.7` or `198.51.100.0/24`). The router pins every address inside a subnet,
+  and servers receive such entries as iptables rules via the new daemon command
+  `add-ip --cidr <subnet>` / `remove-ip --cidr <subnet>`.
+- `app/core/targets.mjs`: shared validation for domains, IPv4 addresses and CIDR matching.
+- Unit tests for target validation, CIDR matching and the mixed-list split.
+
+### Fixed
+
+- The daemon no longer refuses to start when its watch list contains a malformed or non-domain
+  entry: invalid items are skipped instead of aborting config load.
+- Server install now passes only domains to the daemon watch list and re-applies static subnets
+  with `add-ip` after the restart.
+
 ## [0.1.1] - 2026-11-07
 
 ### Added
@@ -60,4 +78,6 @@ First public release.
 - Only SOCKS5 upstreams are supported.
 
 [0.1.0]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.0
+[0.1.1]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.1
+[0.1.2]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.2
 [0.1.1]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.1

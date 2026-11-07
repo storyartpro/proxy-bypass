@@ -71,14 +71,20 @@ function renderProxies() {
     : '<tr><td colspan="7" class="muted">Прокси не добавлены</td></tr>';
 }
 
+function targetKind(host) {
+  if (/^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\/(3[0-2]|[12]?\d)$/.test(host)) return "подсеть";
+  if (/^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/.test(host)) return "IP";
+  return "домен";
+}
+
 function renderBlocked() {
   $("blocked-table").querySelector("tbody").innerHTML = state.blocked.length
     ? state.blocked
         .map(
-          (host) => `<tr><td>${escapeHtml(host)}</td><td class="actions"><button class="danger" data-host="${escapeHtml(host)}">Удалить</button></td></tr>`,
+          (host) => `<tr><td>${escapeHtml(host)}</td><td><span class="badge">${targetKind(host)}</span></td><td class="actions"><button class="danger" data-host="${escapeHtml(host)}">Удалить</button></td></tr>`,
         )
         .join("")
-    : '<tr><td colspan="2" class="muted">Список пуст</td></tr>';
+    : '<tr><td colspan="3" class="muted">Список пуст</td></tr>';
   const scanner = state.status?.scanner;
   if (scanner) {
     $("scanner-enabled").checked = Boolean(scanner.enabled);
@@ -471,7 +477,7 @@ function bind() {
     $("push-list").disabled = true;
     try {
       const result = await api("/api/servers/push", { alias });
-      toast(`Передано ${result.pushed} из ${result.total} адресов на ${alias}`);
+      toast(`Передано ${result.pushed} из ${result.total}: доменов ${result.domains ?? "—"}, подсетей ${result.subnets ?? 0}`);
     } catch (error) {
       toast(`Передача: ${error.message}`, true);
     } finally {

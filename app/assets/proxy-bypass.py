@@ -35,6 +35,7 @@ try:  # Linux daemon; Windows is only used to import this module in tests.
 except ImportError:  # pragma: no cover
     fcntl = None
 import glob
+import ipaddress
 import json
 import os
 import re
@@ -217,8 +218,17 @@ def merge_config(raw: dict) -> dict:
             cfg[key].update(value)
         else:
             cfg[key] = value
-    # normalise
-    cfg["watch"] = [d for d in (valid_domain(x) for x in cfg.get("watch", [])) if d]
+    # normalise; a malformed watch entry must never make the daemon unable to
+    # start, so invalid items are skipped instead of raising.
+    clean_watch = []
+    for item in cfg.get("watch", []):
+        try:
+            domain = valid_domain(item)
+        except ValueError:
+            continue
+        if domain not in clean_watch:
+            clean_watch.append(domain)
+    cfg["watch"] = clean_watch
     cfg["ignore"] = [str(x).lower() for x in cfg.get("ignore", [])]
     cfg["ports"] = sorted({int(p) for p in cfg.get("ports", [443])})
     cfg["timeout_s"] = float(cfg.get("timeout_s", 6.0))
@@ -606,7 +616,7 @@ def ensure_mark_bypass() -> List[str]:
     return changed
 
 
-def apply_rules(cfg: dict, entries: dict) -> dict:
+def apply_rules(cfg: dict, entries: dict, subnets: Optional[List[str]] = None) -> dict:
     """Rebuild both redirect chains from the current state (fail-open)."""
     chain = cfg["chain"]
     chain6 = cfg["chain6"]
@@ -614,12 +624,17 @@ def apply_rules(cfg: dict, entries: dict) -> dict:
     active = [e for e in entries.values() if e.get("active")]
     ipv4 = sorted({ip for entry in active for ip in entry.get("ips", [])})
     ipv6 = sorted({ip for entry in active for ip in entry.get("ips6", [])})
+    static_subnets = sorted({str(item).strip() for item in (subnets or []) if str(item).strip()})
     ensure_mark_bypass()
 
     _iptables("iptables", "-t", "nat", "-N", chain)
     for proto_port in cfg["ports"]:
         _ensure_jump("iptables", ("-t", "nat"), chain, int(proto_port))
     _iptables("iptables", "-t", "nat", "-F", chain)
+    for subnet in static_subnets:
+        for proto_port in cfg["ports"]:
+            _iptables("iptables", "-t", "nat", "-A", chain, "-d", subnet, "-p", "tcp",
+                      "--dport", str(proto_port), "-j", "REDIRECT", "--to-ports", str(port))
     for ip in ipv4:
         for proto_port in cfg["ports"]:
             _iptables("iptables", "-t", "nat", "-A", chain, "-d", f"{ip}/32", "-p", "tcp",
@@ -631,7 +646,12 @@ def apply_rules(cfg: dict, entries: dict) -> dict:
     for ip in ipv6:
         _iptables("ip6tables", "-A", chain6, "-d", ip, "-p", "tcp", "--dport", "443",
                   "-j", "REJECT", "--reject-with", "tcp-reset")
-    return {"ipv4_rules": len(ipv4), "ipv6_rules": len(ipv6), "active_domains": len(active)}
+    return {
+        "ipv4_rules": len(ipv4) + len(static_subnets),
+        "ipv6_rules": len(ipv6),
+        "active_domains": len(active),
+        "static_subnets": len(static_subnets),
+    }
 
 
 def chain_rules(cfg: dict):
@@ -713,7 +733,7 @@ def sync(cfg: dict, state: dict, *, only: Optional[List[str]] = None) -> dict:
             # keep the previous decision while both paths fail: a transient
             # outage must not silently drop an established bypass.
             pass
-    stats = apply_rules(cfg, entries)
+    stats = apply_rules(cfg, entries, state.get("subnets", []))
     state["updated_at"] = now_iso()
     state["chain"] = cfg["chain"]
     state["last_sync"] = {
@@ -800,7 +820,7 @@ def learn(cfg: dict, state: dict) -> dict:
         added.append(domain)
         if len(added) >= int(cfg["learn"]["max_new"]):
             break
-    stats = apply_rules(cfg, entries)
+    stats = apply_rules(cfg, entries, state.get("subnets", []))
     state["updated_at"] = now_iso()
     return {"scanned_files": len(scanned), "candidates": [c["domain"] for c in checked],
             "added": added, **stats}
@@ -869,10 +889,43 @@ def cmd_remove(cfg: dict, state: dict, domain: str) -> dict:
     cfg["watch"] = [item for item in cfg["watch"] if item != domain]
     save_config(cfg)
     entry = state.setdefault("entries", {}).pop(domain, None)
-    stats = apply_rules(cfg, state.get("entries", {}))
+    stats = apply_rules(cfg, state.get("entries", {}), state.get("subnets", []))
     state["updated_at"] = now_iso()
     save_state(state)
     return {"ok": True, "domain": domain, "removed": entry is not None, **stats}
+
+
+def _valid_subnet(value: str) -> str:
+    try:
+        network = ipaddress.ip_network(str(value).strip(), strict=False)
+    except ValueError as error:
+        raise ValueError(f"not a valid IPv4 subnet: {value!r}") from error
+    if network.version != 4:
+        raise ValueError("only IPv4 subnets are supported")
+    return str(network)
+
+
+def cmd_add_ip(cfg: dict, state: dict, cidr: str) -> dict:
+    """Route a whole IPv4 subnet through the proxy, independent of DNS."""
+    subnet = _valid_subnet(cidr)
+    subnets = state.setdefault("subnets", [])
+    if subnet not in subnets:
+        subnets.append(subnet)
+    stats = apply_rules(cfg, state.get("entries", {}), subnets)
+    state["updated_at"] = now_iso()
+    save_state(state)
+    return {"ok": True, "cidr": subnet, "subnets": subnets, **stats}
+
+
+def cmd_remove_ip(cfg: dict, state: dict, cidr: str) -> dict:
+    subnet = _valid_subnet(cidr)
+    subnets = state.setdefault("subnets", [])
+    removed = subnet in subnets
+    state["subnets"] = [item for item in subnets if item != subnet]
+    stats = apply_rules(cfg, state.get("entries", {}), state["subnets"])
+    state["updated_at"] = now_iso()
+    save_state(state)
+    return {"ok": True, "cidr": subnet, "removed": removed, **stats}
 
 
 def cmd_sync(cfg: dict) -> dict:
@@ -925,6 +978,7 @@ def load_state() -> dict:
     if not isinstance(state, dict):
         state = {}
     state.setdefault("entries", {})
+    state.setdefault("subnets", [])
     return state
 
 
@@ -933,8 +987,10 @@ def load_state() -> dict:
 # --------------------------------------------------------------------------- #
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="proxy-bypass", description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=["status", "sync", "check", "add", "remove", "learn", "daemon"])
+    parser.add_argument("command", choices=["status", "sync", "check", "add", "remove", "learn",
+                                            "add-ip", "remove-ip", "daemon"])
     parser.add_argument("--domain")
+    parser.add_argument("--cidr", help="IPv4 subnet to route through the proxy, e.g. 203.0.113.0/24")
     parser.add_argument("--pin", action="store_true", help="never auto-remove this domain")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
@@ -959,6 +1015,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not args.domain:
             parser.error("--domain is required")
         result = cmd_remove(cfg, load_state(), args.domain)
+    elif args.command == "add-ip":
+        if not args.cidr:
+            parser.error("--cidr is required")
+        result = cmd_add_ip(cfg, load_state(), args.cidr)
+    elif args.command == "remove-ip":
+        if not args.cidr:
+            parser.error("--cidr is required")
+        result = cmd_remove_ip(cfg, load_state(), args.cidr)
     else:  # daemon
         lock_handle = open(LOCK_PATH, "w")  # noqa: SIM115 - held for the process lifetime
         try:

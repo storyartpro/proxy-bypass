@@ -42,7 +42,7 @@ Proxy Bypass is built around measurements instead:
 | --- | --- |
 | **Proxies** | Up to 5 SOCKS5 proxies, priority order, health checks every 20 s, automatic failover to the next healthy proxy, add/edit/delete/enable in the UI. |
 | **PC routing** | One toggle enables the Windows system proxy pointing at the local router; disabling restores the previous settings exactly. |
-| **Blocked list** | One shared list of domains; manual add/remove; one click pushes it to any server, where it becomes iptables rules via the server daemon. |
+| **Blocked list** | One shared list of domains, IPv4 addresses and CIDR subnets; manual add/remove; one click pushes it to any server, where it becomes iptables rules via the server daemon (IP targets are routed without DNS). |
 | **Scanner** | Periodic direct-vs-proxy probing adds resources blocked on the main IP to the list automatically. |
 | **Servers** | Add by SSH alias, install/update the Linux daemon, start/stop it per server, push the blocked list, push proxy credentials (rewrites `redsocks` upstream with a timestamped backup). |
 | **Monitoring** | Continuous sampling of the main external IP and of every proxy: latency, download speed, stability over the last samples, current connection load, plus history. |

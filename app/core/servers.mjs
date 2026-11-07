@@ -4,6 +4,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { splitTargets, isDomain } from "./targets.mjs";
 
 const DAEMON_PATH = "/usr/local/sbin/proxy-bypass";
 const CONFIG_PATH = "/etc/proxy-bypass/config.json";
@@ -103,7 +104,10 @@ async function upload(alias, name, content) {
 export async function installServer(alias, blockedHosts = [], chain = "PROXY-BYPASS") {
   const config = JSON.parse(asset("default-config.json"));
   config.chain = chain;
-  config.watch = [...new Set([...(blockedHosts || []), ...config.watch])].slice(0, 300);
+  const { domains, subnets } = splitTargets(blockedHosts);
+  // The daemon's watch list only accepts domains: IP/CIDR entries are applied
+  // separately through `add-ip`, otherwise the whole config would be invalid.
+  config.watch = [...new Set([...domains, ...config.watch.filter((item) => isDomain(item))])].slice(0, 300);
   await upload(alias, "proxy-bypass.py", asset("proxy-bypass.py"));
   await upload(alias, "proxy-bypass.service", asset("proxy-bypass.service"));
   await upload(alias, "proxy-bypass.json", JSON.stringify(config, null, 2));
@@ -119,6 +123,12 @@ export async function installServer(alias, blockedHosts = [], chain = "PROXY-BYP
     const result = await runSsh(alias, step, { timeoutMs: 120000 });
     if (result.code !== 0) throw new Error(`${step}: ${(result.stderr || result.stdout || "").trim().slice(0, 300)}`);
   }
+  // Restore static subnets from the blocked list (best effort, after the daemon
+  // is up: the command itself rebuilds the chains).
+  for (const subnet of subnets) {
+    const result = await runSsh(alias, `sudo -n ${DAEMON_PATH} add-ip --cidr ${subnet} --json`, { timeoutMs: 60000 });
+    if (result.code !== 0) console.error(`[servers] subnet ${subnet}: ${(result.stderr || "").trim().slice(0, 200)}`);
+  }
   return serverStatus(alias);
 }
 
@@ -130,12 +140,23 @@ export async function controlServer(alias, action) {
 }
 
 export async function pushBlockedList(alias, hosts) {
+  const { domains, subnets } = splitTargets(hosts);
   const results = [];
-  for (const host of hosts) {
+  for (const host of domains) {
     const result = await runSsh(alias, `sudo -n ${DAEMON_PATH} add --domain ${host} --pin --json`, { timeoutMs: 45000 });
-    results.push({ host, ok: result.code === 0, error: result.code === 0 ? null : (result.stderr || "").trim().slice(0, 200) });
+    results.push({ host, kind: "domain", ok: result.code === 0, error: result.code === 0 ? null : (result.stderr || "").trim().slice(0, 200) });
   }
-  return { pushed: results.filter((item) => item.ok).length, total: hosts.length, results };
+  for (const subnet of subnets) {
+    const result = await runSsh(alias, `sudo -n ${DAEMON_PATH} add-ip --cidr ${subnet} --json`, { timeoutMs: 45000 });
+    results.push({ host: subnet, kind: "cidr", ok: result.code === 0, error: result.code === 0 ? null : (result.stderr || "").trim().slice(0, 200) });
+  }
+  return {
+    pushed: results.filter((item) => item.ok).length,
+    total: results.length,
+    domains: domains.length,
+    subnets: subnets.length,
+    results,
+  };
 }
 
 /**
