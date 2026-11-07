@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.9] - 2026-11-07
+
+### Added
+
+- **Tray icon.** Closing the browser window no longer ends the session: the app keeps running in
+  the notification area. The tray menu can reopen the window, toggle the PC proxy and stop
+  everything. The icon disappears by itself when the backend is gone.
+- **"Закрыть полностью"** button in the window and in the tray: stops the local proxy, the app
+  tunnel, monitoring and the scanner, restores the Windows proxy settings, and exits the process.
+- The PC-proxy state is remembered: after a full shutdown and the next start, the bypass comes back
+  only if it was enabled when the app was closed.
+
+### Fixed
+
+- The tray process is spawned with real stderr capture; a failing helper script now leaves a line in
+  the application log instead of disappearing silently.
+
 ## [0.1.8] - 2026-11-07
 
 ### Fixed
@@ -156,3 +173,4 @@ First public release.
 [0.1.6]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.6
 [0.1.7]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.7
 [0.1.8]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.8
+[0.1.9]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.9

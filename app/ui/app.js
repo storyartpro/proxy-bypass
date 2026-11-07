@@ -51,7 +51,7 @@ function renderStatus(status) {
   $("subtitle").textContent = status.upstreams.active
     ? `активный прокси: ${status.upstreams.active.name} (${status.upstreams.active.endpoint})`
     : "нет доступных прокси";
-  $("footer-state").textContent = `порт прокси ${status.pc.port} · адресов в списке: ${status.blockedCount} · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
+  $("footer-state").textContent = `порт прокси ${status.pc.port} · адресов в списке: ${status.blockedCount} · обновлено ${new Date().toLocaleTimeString("ru-RU")} · закрытие окна оставляет приложение в трее`;
   renderTunnel(status.localTunnel);
 }
 
@@ -588,6 +588,31 @@ function bind() {
     } finally {
       $("tunnel-save").disabled = false;
     }
+  });
+
+  $("shutdown").addEventListener("click", async () => {
+    const confirmed = confirm(
+      "Закрыть приложение полностью?\n\n"
+      + "Будут остановлены: локальный прокси, туннель для приложений, мониторинг и автосканер. "
+      + "Настройки системного прокси Windows вернутся в исходное состояние.",
+    );
+    if (!confirmed) return;
+    $("shutdown").disabled = true;
+    try {
+      await api("/api/shutdown", {});
+    } catch {
+      /* the process may exit before the response is fully read */
+    }
+    document.body.innerHTML = '<div class="shutdown-screen"><b>Приложение остановлено</b>'
+      + '<span>Прокси, туннель и мониторинг выключены. Настройки Windows восстановлены.</span>'
+      + '<span>Это окно можно закрыть.</span></div>';
+    setTimeout(() => {
+      try {
+        window.close();
+      } catch {
+        /* the window may refuse to close; the message above stays */
+      }
+    }, 1500);
   });
 
   $("new-type").dispatchEvent(new Event("change"));

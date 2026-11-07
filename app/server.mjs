@@ -174,11 +174,19 @@ async function enablePc() {
   if (!state.proxyRunning) throw new Error("локальный прокси не запущен");
   await enableSystemProxy(`127.0.0.1:${config.port}`);
   state.pcProxyError = null;
+  if (!config.pcProxyWanted) {
+    config.pcProxyWanted = true;
+    config = await writeConfig(config);
+  }
   log("ПК: системный прокси включён");
 }
 
 async function disablePc() {
   await disableSystemProxy();
+  if (config.pcProxyWanted !== false) {
+    config.pcProxyWanted = false;
+    config = await writeConfig(config);
+  }
   log("ПК: системный прокси выключен");
 }
 
@@ -385,6 +393,28 @@ const routes = {
     await startLocalTunnel();
     return { ok: true, tunnel: tunnelStatus() };
   },
+  "POST /api/shutdown": async () => {
+    log("команда: закрыть полностью");
+    setTimeout(async () => {
+      try {
+        if (state.scannerTimer) clearInterval(state.scannerTimer);
+        monitor.stop();
+        stopLocalTunnel();
+        manager.stop();
+        await disableSystemProxy().catch((error) => log(`возврат прокси Windows: ${error.message}`));
+        await Promise.race([
+          new Promise((resolve) => proxy.stop().then(resolve).catch(() => resolve())),
+          new Promise((resolve) => setTimeout(resolve, 2000)),
+        ]);
+        log("приложение остановлено");
+        process.exit(0);
+      } catch (error) {
+        log(`остановка: ${error.message}`);
+        process.exit(1);
+      }
+    }, 300);
+    return { ok: true, stopping: true };
+  },
   "GET /api/logs": async () => ({ ok: true, logs: logs.slice(-200) }),
 };
 
@@ -510,6 +540,30 @@ function tunnelStatus() {
   };
 }
 
+const TRAY_SCRIPT = fileURLToPath(new URL("./tray.ps1", import.meta.url));
+
+/** Tray icon: keeps the app reachable after the window is closed. */
+function startTray() {
+  if (process.platform !== "win32" || !fs.existsSync(TRAY_SCRIPT)) return;
+  try {
+    const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    const child = spawn(
+      powershell,
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", TRAY_SCRIPT],
+      { stdio: ["ignore", "ignore", "pipe"], windowsHide: true, cwd: path.dirname(TRAY_SCRIPT) },
+    );
+    child.stderr.on("data", (chunk) => {
+      const text = String(chunk).trim();
+      if (text) log(`трей: ${text.slice(0, 300)}`);
+    });
+    child.on("error", (error) => log(`трей: ${error.message}`));
+    child.on("exit", (code) => log(`трей: процесс завершился (${code})`));
+    log(`иконка в трее запущена (pid ${child.pid})`);
+  } catch (error) {
+    log(`трей: ${error.message}`);
+  }
+}
+
 /** True when something already serves the app UI on the loopback port. */
 function interfaceAlive(port) {
   return new Promise((resolve) => {
@@ -587,6 +641,11 @@ async function main() {
   }
   state.proxyRunning = true;
   log(`локальный прокси слушает 127.0.0.1:${config.port}`);
+  // "Закрыть полностью" restores Windows settings; the next start brings the
+  // bypass back only if it was on when the app was closed.
+  if (config.pcProxyWanted) {
+    enablePc().catch((error) => log(`автовключение прокси на ПК: ${error.message}`));
+  }
 
   await manager.start(20000);
   // Passwords rotate outside the app: re-read the secrets file periodically so a
@@ -619,6 +678,7 @@ async function main() {
   server.listen(port, "127.0.0.1", () => {
     log(`интерфейс: http://127.0.0.1:${port}`);
     openWindow();
+    startTray();
   });
 }
 
