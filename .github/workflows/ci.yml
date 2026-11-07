@@ -1,0 +1,28 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run SOCKS5 protocol tests
+        run: node --test test/socks.test.mjs
+      - name: Syntax check
+        shell: pwsh
+        run: |
+          foreach ($file in @('app/server.mjs','app/core/local-proxy.mjs','app/core/upstreams.mjs','app/core/monitor.mjs','app/core/servers.mjs','app/core/store.mjs','app/core/system-proxy.mjs','app/ui/app.js')) {
+            node --check $file
+            if ($LASTEXITCODE -ne 0) { throw "syntax: $file" }
+          }
