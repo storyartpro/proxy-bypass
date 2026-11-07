@@ -217,6 +217,7 @@ async function apiStatus() {
     scanner: { enabled: config.scanner.enabled, intervalMin: config.scanner.intervalMin, lastScan: state.lastScan },
     monitoring: { enabled: config.monitoring.enabled, intervalSec: config.monitoring.intervalSec, latest: monitor.latest },
     autoPushToServers: config.autoPushToServers,
+    localTunnel: tunnelStatus(),
     servers: config.servers,
     lastLogs: logs.slice(-40),
   };
@@ -348,6 +349,18 @@ const routes = {
     log(`сервер ${alias}: прокси обновлён (${proxyItem.host}:${proxyItem.port})`);
     return { ok: true, proxy: { host: proxyItem.host, port: proxyItem.port }, result };
   },
+  "GET /api/tunnel": async () => ({ ok: true, tunnel: tunnelStatus() }),
+  "POST /api/tunnel": async (body) => {
+    config.localTunnel = {
+      enabled: body.enabled !== false,
+      sshAlias: String(body.sshAlias ?? config.localTunnel?.sshAlias ?? "").trim(),
+      port: Number.isFinite(body.port) ? Math.max(1, Math.trunc(body.port)) : Number(config.localTunnel?.port || 1081),
+    };
+    config = await writeConfig(config);
+    stopLocalTunnel();
+    await startLocalTunnel();
+    return { ok: true, tunnel: tunnelStatus() };
+  },
   "GET /api/logs": async () => ({ ok: true, logs: logs.slice(-200) }),
 };
 
@@ -384,6 +397,94 @@ const server = http.createServer(async (request, response) => {
     json(response, 400, { ok: false, error: error.message });
   }
 });
+
+/** Local SOCKS5 tunnel (`ssh -N -D`) for apps that can only set their own proxy. */
+const tunnelState = { child: null, status: "off", error: null, startedAt: null, restarts: 0 };
+
+function portAlive(port, timeoutMs = 1000) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: "127.0.0.1", port });
+    const done = (value) => {
+      socket.destroy();
+      resolve(value);
+    };
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    setTimeout(() => done(false), timeoutMs).unref?.();
+  });
+}
+
+async function startLocalTunnel() {
+  const tunnelSettings = config.localTunnel || {};
+  if (!tunnelSettings.enabled) {
+    tunnelState.status = "off";
+    return;
+  }
+  if (!tunnelSettings.sshAlias) {
+    tunnelState.status = "error";
+    tunnelState.error = "не задан SSH-алиас";
+    return;
+  }
+  if (tunnelState.child && tunnelState.child.exitCode === null) return;
+  const port = Number(tunnelSettings.port || 1081);
+  const binary = process.env.PROXY_APP_SSH || "ssh";
+  const child = spawn(
+    binary,
+    ["-N", "-D", `127.0.0.1:${port}`, "-o", "BatchMode=yes", "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=15", tunnelSettings.sshAlias],
+    { stdio: "ignore", windowsHide: true },
+  );
+  tunnelState.child = child;
+  tunnelState.status = "starting";
+  tunnelState.error = null;
+  tunnelState.startedAt = new Date().toISOString();
+  child.on("error", (error) => {
+    tunnelState.status = "error";
+    tunnelState.error = error.message;
+  });
+  child.on("exit", (code) => {
+    if (tunnelState.child !== child) return;
+    tunnelState.child = null;
+    if (!config.localTunnel.enabled) {
+      tunnelState.status = "off";
+      return;
+    }
+    tunnelState.status = "restarting";
+    tunnelState.restarts += 1;
+    log(`туннель для приложений: ssh завершился (${code}), перезапускаю`);
+    setTimeout(() => startLocalTunnel().catch((error) => log(`туннель: ${error.message}`)), 5000).unref?.();
+  });
+  setTimeout(async () => {
+    if (await portAlive(port)) {
+      tunnelState.status = "running";
+      tunnelState.error = null;
+      log(`туннель для приложений: SOCKS5 127.0.0.1:${port} -> ${tunnelSettings.sshAlias}`);
+    }
+  }, 1500).unref?.();
+}
+
+function stopLocalTunnel() {
+  const child = tunnelState.child;
+  tunnelState.child = null;
+  tunnelState.status = "off";
+  if (child) {
+    try {
+      child.kill();
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+function tunnelStatus() {
+  return {
+    enabled: Boolean(config.localTunnel?.enabled),
+    sshAlias: config.localTunnel?.sshAlias || "",
+    port: Number(config.localTunnel?.port || 1081),
+    status: tunnelState.status,
+    error: tunnelState.error,
+    restarts: tunnelState.restarts,
+  };
+}
 
 /** True when something already serves the app UI on the loopback port. */
 function interfaceAlive(port) {
@@ -475,6 +576,7 @@ async function main() {
       .catch((error) => log(`обновление реквизитов: ${error.message}`));
   }, 5 * 60_000).unref?.();
   monitor.start();
+  startLocalTunnel().catch((error) => log(`туннель для приложений: ${error.message}`));
   scheduleScanner();
   setTimeout(() => scan().catch((error) => log(`первый скан: ${error.message}`)), 3000);
 

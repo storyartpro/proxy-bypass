@@ -131,6 +131,14 @@
         </div>
       </div>
       <p class="muted">Установка ставит серверный процесс по SSH, кнопки включают и выключают его на каждом сервере отдельно.</p>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="tunnel-enabled" /> локальный SOCKS5-туннель для приложений</label>
+        <input id="tunnel-alias" placeholder="SSH-алиас" />
+        <input id="tunnel-port" type="number" min="1" class="tiny" value="1081" />
+        <button id="tunnel-save">Сохранить</button>
+        <span id="tunnel-status" class="muted">—</span>
+      </div>
+      <p class="muted">Нужен приложениям, которые умеют только собственный прокси (например, Telegram): укажите в них SOCKS5 127.0.0.1:1081.</p>
       <table class="grid" id="servers-table">
         <thead><tr><th>Сервер</th><th>Состояние</th><th>Правил</th><th class="actions">Действия</th></tr></thead>
         <tbody></tbody>

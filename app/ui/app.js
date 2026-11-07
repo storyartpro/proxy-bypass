@@ -34,6 +34,15 @@ function healthBadge(health) {
   return `<span class="badge bad" title="${escapeHtml(health.error || "")}">недоступен</span>`;
 }
 
+function renderTunnel(tunnel) {
+  if (!tunnel) return;
+  $("tunnel-enabled").checked = Boolean(tunnel.enabled);
+  $("tunnel-alias").value = tunnel.sshAlias || "";
+  $("tunnel-port").value = tunnel.port || 1081;
+  const labels = { off: "выключен", starting: "запускается", running: "работает", restarting: "перезапускается", error: `ошибка: ${tunnel.error || ""}` };
+  $("tunnel-status").textContent = `туннель: ${labels[tunnel.status] || tunnel.status}${tunnel.status === "running" ? ` (127.0.0.1:${tunnel.port})` : ""}`;
+}
+
 function renderStatus(status) {
   state.status = status;
   $("pc-dot").className = `dot${status.pc.proxyEnabled ? " on" : ""}`;
@@ -43,6 +52,7 @@ function renderStatus(status) {
     ? `активный прокси: ${status.upstreams.active.name} (${status.upstreams.active.endpoint})`
     : "нет доступных прокси";
   $("footer-state").textContent = `порт прокси ${status.pc.port} · адресов в списке: ${status.blockedCount} · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
+  renderTunnel(status.localTunnel);
 }
 
 function renderProxies() {
@@ -560,6 +570,23 @@ function bind() {
       await refreshMonitor();
     } catch (error) {
       toast(error.message, true);
+    }
+  });
+
+  $("tunnel-save").addEventListener("click", async () => {
+    $("tunnel-save").disabled = true;
+    try {
+      const data = await api("/api/tunnel", {
+        enabled: $("tunnel-enabled").checked,
+        sshAlias: $("tunnel-alias").value.trim(),
+        port: Number($("tunnel-port").value || 1081),
+      });
+      renderTunnel(data.tunnel);
+      toast(data.tunnel.status === "running" ? "Туннель запущен" : "Настройки туннеля сохранены");
+    } catch (error) {
+      toast(`Туннель: ${error.message}`, true);
+    } finally {
+      $("tunnel-save").disabled = false;
     }
   });
 

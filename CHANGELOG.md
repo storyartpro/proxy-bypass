@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.6] - 2026-11-07
+
+### Added
+
+- Optional **local SOCKS5 tunnel for applications** (`ssh -N -D 127.0.0.1:1081`), managed by the
+  app and restarted automatically if the SSH connection drops. It is intended for programs that only
+  accept their own proxy setting — Telegram, for example. Enable it in the Servers tab and point the
+  app at `SOCKS5 127.0.0.1:1081`.
+
+### Fixed
+
+- Telegram lost its proxy route when the previous tunnel provider was retired. The tunnel now lives
+  in the app itself, so it survives restarts and app updates.
+
 ## [0.1.5] - 2026-11-07
 
 ### Fixed
@@ -117,3 +131,4 @@ First public release.
 [0.1.3]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.3
 [0.1.4]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.4
 [0.1.5]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.5
+[0.1.6]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.6

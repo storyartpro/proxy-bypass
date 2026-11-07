@@ -38,6 +38,13 @@ const DEFAULTS = {
     speedBytes: 200000,
     mainIpCheck: true,
   },
+  // Local SOCKS5 tunnel for applications that can only use their own proxy
+  // setting (Telegram, for instance): the app keeps `ssh -N -D` alive.
+  localTunnel: {
+    enabled: false,
+    sshAlias: "",
+    port: 1081,
+  },
   servers: [{ alias: "my-server", label: "My Linux server" }],
   blocked: [
     "gemini.google.com",
@@ -97,6 +104,7 @@ export function loadConfig() {
       ...parsed,
       scanner: { ...DEFAULTS.scanner, ...(parsed.scanner || {}) },
       monitoring: { ...DEFAULTS.monitoring, ...(parsed.monitoring || {}) },
+      localTunnel: { ...DEFAULTS.localTunnel, ...(parsed.localTunnel || {}) },
     };
   } catch {
     return clone(DEFAULTS);

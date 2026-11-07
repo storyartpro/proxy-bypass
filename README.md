@@ -47,6 +47,7 @@ Proxy Bypass is built around measurements instead:
 | **Servers** | Add by SSH alias, install/update the Linux daemon, start/stop it per server, push the blocked list, push proxy credentials (rewrites `redsocks` upstream with a timestamped backup). |
 | **Monitoring** | Continuous sampling of the main external IP and of every proxy: latency, download speed, stability over the last samples, current connection load, plus history. |
 | **Autostart** | Installer puts the app into `%LOCALAPPDATA%\ProxyApp`, adds Start-menu and Startup shortcuts; a second launch just reopens the window. |
+| **App tunnel** | Optional local SOCKS5 tunnel (`ssh -N -D 127.0.0.1:1081`) kept alive by the app for programs that only accept their own proxy setting — Telegram, for example. |
 
 ## How it works
 
