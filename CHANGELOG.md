@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.1] - 2026-11-07
 
 ### Added
 
@@ -60,3 +60,4 @@ First public release.
 - Only SOCKS5 upstreams are supported.
 
 [0.1.0]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.0
+[0.1.1]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.1
