@@ -415,14 +415,14 @@ function bind() {
   });
 
   $("host-add").addEventListener("click", async () => {
-    const host = $("new-host").value.trim();
+    const host = $("new-target").value.trim();
     if (!host) return;
     try {
       const data = await api("/api/blocked/add", { host });
       state.blocked = data.blocked;
-      $("new-host").value = "";
+      $("new-target").value = "";
       renderBlocked();
-      toast(`Добавлен ${host}`);
+      toast(`Добавлен ${host} (${data.kind || "адрес"})`);
     } catch (error) {
       toast(error.message, true);
     }

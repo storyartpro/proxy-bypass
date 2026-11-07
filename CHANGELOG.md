@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.7] - 2026-11-07
+
+### Fixed
+
+- The blocked-list input had a duplicate DOM id (`new-host`, also used by the proxy form), so the
+  "Добавить" button read the wrong field and silently added nothing. The field is now `new-target`.
+  IPv4 addresses and subnets can be added from the UI again (verified with `104.253.1.146`).
+
 ## [0.1.6] - 2026-11-07
 
 ### Added
@@ -132,3 +140,4 @@ First public release.
 [0.1.4]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.4
 [0.1.5]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.5
 [0.1.6]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.6
+[0.1.7]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.7
