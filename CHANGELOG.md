@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.8] - 2026-11-07
+
+### Fixed
+
+- Adding or editing a proxy no longer wipes connection fields. The API used to return only the
+  display view of the proxy list (endpoint, health), so the UI sent back entries without
+  `host`/`port`/credentials — a newly added proxy was saved as `:0` and the existing one lost its
+  password (provider answered SOCKS code 2). The API now returns the real configuration fields and
+  the server keeps previous values when a field is omitted.
+- Saving a SOCKS5 proxy without host or port is rejected with a clear message instead of writing a
+  broken entry.
+- Repaired the affected configuration: invalid entries are removed and the credentials are refreshed
+  from the secrets file.
+
 ## [0.1.7] - 2026-11-07
 
 ### Fixed
@@ -141,3 +155,4 @@ First public release.
 [0.1.5]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.5
 [0.1.6]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.6
 [0.1.7]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.7
+[0.1.8]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.8

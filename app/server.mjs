@@ -205,13 +205,27 @@ async function serverListStatuses(refresh = false) {
   return result;
 }
 
+/** Proxy list for the UI: health/active state merged with the real configuration
+ * fields (host, port, login, password), so a save never wipes them. */
+function proxiesView() {
+  const snapshot = manager.snapshot();
+  const configured = new Map((config.proxies || []).map((item) => [item.id, item]));
+  return {
+    ...snapshot,
+    proxies: snapshot.proxies.map((item) => {
+      const raw = configured.get(item.id) || {};
+      return { ...raw, ...item };
+    }),
+  };
+}
+
 async function apiStatus() {
   const pc = await pcStatus();
   return {
     ok: true,
     startedAt,
     pc: { proxyRunning: state.proxyRunning, proxyEnabled: pc.pcProxyEnabled, port: config.port },
-    upstreams: manager.snapshot(),
+    upstreams: proxiesView(),
     blockedCount: config.blocked.length,
     blocked: config.blocked,
     scanner: { enabled: config.scanner.enabled, intervalMin: config.scanner.intervalMin, lastScan: state.lastScan },
@@ -232,28 +246,38 @@ const routes = {
     else await disablePc();
     return { ok: true, ...(await pcStatus()) };
   },
-  "GET /api/proxies": async () => ({ ok: true, ...manager.snapshot(), max: 5 }),
+  "GET /api/proxies": async () => ({ ok: true, ...proxiesView(), max: 5 }),
   "POST /api/proxies": async (body) => {
     if (!Array.isArray(body.proxies)) throw new Error("proxies must be an array");
     if (body.proxies.length > 5) throw new Error("не более 5 прокси");
-    config.proxies = body.proxies.map((item, index) => ({
-      id: item.id || `proxy-${index + 1}`,
-      name: String(item.name || `Прокси ${index + 1}`).slice(0, 80),
-      type: item.type === "ssh" ? "ssh" : "socks5",
-      host: item.type === "ssh" ? undefined : String(item.host || "").trim(),
-      port: item.type === "ssh" ? undefined : Number(item.port || 0),
-      login: item.type === "ssh" ? undefined : String(item.login || ""),
-      password: item.type === "ssh" ? undefined : String(item.password || ""),
-      sshAlias: item.type === "ssh" ? String(item.sshAlias || "").trim() : undefined,
-      localPort: item.type === "ssh" ? Number(item.localPort || 1081) : undefined,
-      enabled: item.enabled !== false,
-    }));
+    const existing = new Map((config.proxies || []).map((item) => [item.id, item]));
+    config.proxies = body.proxies.map((item, index) => {
+      const previous = existing.get(item.id) || {};
+      const type = item.type === "ssh" ? "ssh" : "socks5";
+      const host = String(item.host ?? previous.host ?? "").trim();
+      const port = Number(item.port ?? previous.port ?? 0);
+      if (type === "socks5" && (!host || !Number.isInteger(port) || port <= 0)) {
+        throw new Error(`прокси ${index + 1}: нужны хост и порт SOCKS5`);
+      }
+      return {
+        id: item.id || `proxy-${index + 1}`,
+        name: String(item.name || previous.name || `Прокси ${index + 1}`).slice(0, 80),
+        type,
+        host: type === "ssh" ? undefined : host,
+        port: type === "ssh" ? undefined : port,
+        login: type === "ssh" ? undefined : String(item.login ?? previous.login ?? ""),
+        password: type === "ssh" ? undefined : String(item.password ?? previous.password ?? ""),
+        sshAlias: type === "ssh" ? String(item.sshAlias || previous.sshAlias || "").trim() : undefined,
+        localPort: type === "ssh" ? Number(item.localPort || previous.localPort || 1081) : undefined,
+        enabled: item.enabled !== false,
+      };
+    });
     config = await writeConfig(config);
     manager.setProxies(config.proxies);
     await manager.refresh();
-    return { ok: true, ...manager.snapshot() };
+    return { ok: true, ...proxiesView() };
   },
-  "POST /api/proxies/check": async () => ({ ok: true, ...(await manager.refresh()) }),
+  "POST /api/proxies/check": async () => ({ ok: true, ...(await manager.refresh(), proxiesView()) }),
   "GET /api/blocked": async () => ({ ok: true, blocked: config.blocked, blockedCount: config.blocked.length }),
   "POST /api/blocked/add": async (body) => {
     const target = normalizeTarget(body.host);
