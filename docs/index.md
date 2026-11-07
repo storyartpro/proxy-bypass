@@ -8,7 +8,7 @@ description: Selective proxy bypass controlled from a Windows 11 PC
 Selective proxy bypass controlled from a Windows 11 PC: only resources that are actually blocked
 go through one of your SOCKS5 proxies, everything else keeps the normal connection.
 
-**Version 0.1.0** · [GitHub repository](https://github.com/storyartpro/proxy-bypass) ·
+**Version 0.1.2** · [GitHub repository](https://github.com/storyartpro/proxy-bypass) ·
 [Releases](https://github.com/storyartpro/proxy-bypass/releases)
 
 ## Start here

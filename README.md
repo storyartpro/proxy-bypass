@@ -7,7 +7,7 @@ leave through one of your SOCKS5 proxies, and manages the same bypass on your Li
 SSH. Only the resources that are actually blocked go through a proxy; everything else keeps using
 the normal connection.
 
-> Version **0.1.0** — first public release. Windows 11 (Windows 10 works too).
+> Version **0.1.2** — current release. Windows 11 (Windows 10 works too).
 > [Русская документация](README.ru.md)
 
 ## Screenshots
