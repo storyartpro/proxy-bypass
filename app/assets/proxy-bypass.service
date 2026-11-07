@@ -1,0 +1,26 @@
+[Unit]
+Description=Proxy bypass: detect blocked resources and route only them through the SOCKS5 proxy
+Documentation=https://github.com/local/proxy-orchestrator
+After=network-online.target redsocks.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/proxy-bypass daemon
+Restart=on-failure
+RestartSec=15
+# The daemon manipulates iptables and must read the proxy credentials.
+User=root
+Group=root
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=full
+ReadWritePaths=/etc/proxy-bypass /var/lib/proxy-bypass /run
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

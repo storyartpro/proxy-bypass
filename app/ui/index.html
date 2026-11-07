@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Proxy Bypass</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">PB</div>
+    <div>
+      <h1>Proxy Bypass</h1>
+      <div class="sub" id="subtitle">загрузка…</div>
+    </div>
+  </div>
+  <div class="pc-panel">
+    <div class="pc-state">
+      <span class="dot" id="pc-dot"></span>
+      <span id="pc-text">Прокси на ПК: выкл</span>
+    </div>
+    <button id="pc-toggle" class="primary">Включить на ПК</button>
+  </div>
+</header>
+
+<nav>
+  <button class="tab active" data-tab="proxies">Прокси</button>
+  <button class="tab" data-tab="monitor">Мониторинг</button>
+  <button class="tab" data-tab="blocked">Список блокировок</button>
+  <button class="tab" data-tab="servers">Серверы</button>
+  <button class="tab" data-tab="logs">Журнал</button>
+</nav>
+
+<main>
+  <section id="tab-monitor" class="tab-page">
+    <div class="card">
+      <div class="card-head">
+        <h2>Мониторинг</h2>
+        <div class="row">
+          <label class="switch"><input type="checkbox" id="mon-enabled" /> авто-мониторинг</label>
+          <label class="inline">каждые <input id="mon-interval" type="number" min="15" value="60" class="tiny" /> с</label>
+          <button id="mon-sample">Проверить сейчас</button>
+        </div>
+      </div>
+      <div class="mon-ip" id="mon-ip">нет данных</div>
+      <div class="mon-grid" id="mon-proxies"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>История замеров</h2></div>
+      <table class="grid" id="mon-history">
+        <thead><tr><th>Время</th><th>Основной IP</th><th>Отклик IP</th><th>Прокси</th><th>Соединений</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+  <section id="tab-proxies" class="tab-page active">
+    <div class="card">
+      <div class="card-head">
+        <h2>Прокси (до 5, по приоритету)</h2>
+        <div>
+          <button id="proxies-check">Проверить сейчас</button>
+          <button id="proxies-save" class="primary">Сохранить</button>
+        </div>
+      </div>
+      <p class="muted">Работает первый доступный сверху. Если он падает — автоматически включается следующий.</p>
+      <table class="grid" id="proxies-table">
+        <thead><tr><th>#</th><th>Название</th><th>Тип</th><th>Адрес</th><th>Состояние</th><th>Вкл</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row add-row">
+        <select id="new-type">
+          <option value="socks5">SOCKS5</option>
+        </select>
+        <input id="new-name" placeholder="Название" />
+        <input id="new-host" placeholder="Хост (SOCKS5)" />
+        <input id="new-port" placeholder="Порт" />
+        <input id="new-login" placeholder="Логин" />
+        <input id="new-password" placeholder="Пароль" type="password" />
+        <input id="new-ssh" placeholder="SSH-алиас (не используется)" disabled hidden />
+        <button id="proxy-add">Добавить</button>
+        <button id="proxy-cancel" hidden>Отмена</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-blocked" class="tab-page">
+    <div class="card">
+      <div class="card-head">
+        <h2>Заблокированные адреса</h2>
+        <div>
+          <button id="scan-now">Сканировать сейчас</button>
+          <select id="push-server"></select>
+          <button id="push-list" class="primary">Отправить на сервер</button>
+        </div>
+      </div>
+      <div class="row">
+        <input id="new-host" placeholder="домен, например example.com" />
+        <button id="host-add">Добавить</button>
+        <label class="switch"><input type="checkbox" id="scanner-enabled" /> автосканер</label>
+        <label class="inline">каждые <input id="scanner-interval" type="number" min="2" value="15" class="tiny" /> мин</label>
+        <label class="switch"><input type="checkbox" id="auto-push" /> автоотправка на серверы</label>
+      </div>
+      <table class="grid" id="blocked-table">
+        <thead><tr><th>Домен</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="muted" id="scan-result"></p>
+    </div>
+  </section>
+
+  <section id="tab-servers" class="tab-page">
+    <div class="card">
+      <div class="card-head">
+        <h2>Серверы</h2>
+        <div class="row">
+          <input id="new-alias" placeholder="SSH-алиас из ~/.ssh/config" />
+          <input id="new-label" placeholder="Подпись" />
+          <button id="server-add">Добавить</button>
+        </div>
+      </div>
+      <p class="muted">Установка ставит серверный процесс по SSH, кнопки включают и выключают его на каждом сервере отдельно.</p>
+      <table class="grid" id="servers-table">
+        <thead><tr><th>Сервер</th><th>Состояние</th><th>Правил</th><th class="actions">Действия</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-logs" class="tab-page">
+    <div class="card">
+      <div class="card-head"><h2>Журнал</h2><button id="logs-refresh">Обновить</button></div>
+      <pre id="logs"></pre>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+<footer><span id="footer-state">—</span></footer>
+<script src="/app.js"></script>
+</body>
+</html>

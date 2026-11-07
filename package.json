@@ -1,0 +1,40 @@
+{
+  "name": "proxy-bypass",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Windows 11 control centre for selective proxy bypass: up to five proxies with failover, blocked-host list, automatic scanner, monitoring, and Linux servers managed over SSH.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Storyart <danstoryart@gmail.com>",
+  "contributors": [
+    "DeepSeek Harness agent (AI assistant)"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/storyartpro/proxy-bypass.git"
+  },
+  "bugs": {
+    "url": "https://github.com/storyartpro/proxy-bypass/issues"
+  },
+  "homepage": "https://github.com/storyartpro/proxy-bypass#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "win32"
+  ],
+  "scripts": {
+    "start": "node app/server.mjs",
+    "test": "node --test test/socks.test.mjs"
+  },
+  "keywords": [
+    "proxy",
+    "socks5",
+    "failover",
+    "censorship",
+    "bypass",
+    "windows",
+    "linux",
+    "ssh"
+  ]
+}
