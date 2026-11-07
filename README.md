@@ -10,6 +10,18 @@ the normal connection.
 > Version **0.1.0** — first public release. Windows 11 (Windows 10 works too).
 > [Русская документация](README.ru.md)
 
+## Screenshots
+
+| Proxies and failover | Monitoring |
+| --- | --- |
+| ![Proxies](docs/screenshots/proxies.png) | ![Monitoring](docs/screenshots/monitor.png) |
+
+| Server fleet | Blocked-host list |
+| --- | --- |
+| ![Servers](docs/screenshots/servers.png) | ![Blocked](docs/screenshots/blocked.png) |
+
+*(Screenshots are rendered with demo data: placeholder addresses and TEST-NET IPs.)*
+
 ## Why
 
 Blocking is rarely total: a site may open its front page while the API behind it answers
@@ -120,8 +132,9 @@ secrets). The UI edits the same values.
 
 ## Security notes
 
-- `data/config.json` contains proxy credentials in plain text. Keep the `data/` directory local;
-  it is excluded from this repository. DPAPI encryption is on the roadmap.
+- Proxy passwords are encrypted with Windows DPAPI for the current Windows account
+  (`passwordEnc` in `data/config.json`). A copied config file is useless on another machine or
+  account. The `data/` directory is ignored by git.
 - Server credentials are never printed and are sent to servers over SSH stdin only.
 - The UI and routing proxy listen on loopback only (`127.0.0.1`).
 - The Windows system proxy is restored from a saved snapshot on disable.
@@ -145,10 +158,8 @@ proxy-app.vbs             silent launcher
 
 ## Roadmap
 
-- DPAPI encryption for stored credentials
 - single-file `.exe` build (currently Node.js is required)
 - multiple server groups and per-server proxy selection
-- charts for monitoring history
 - protocol support beyond SOCKS5 (HTTP CONNECT upstream)
 
 ## License

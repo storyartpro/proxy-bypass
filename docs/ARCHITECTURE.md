@@ -59,6 +59,15 @@ Concurrent SOCKS handshakes are capped (`maxSocks`) because providers throttle b
 swapped. Disabled entries are skipped. All proxies are ordinary SOCKS5 endpoints; an SSH type exists
 in the type union but is not offered in the UI — the workstation must not route through servers.
 
+## Credentials at rest
+
+Proxy passwords are encrypted with Windows DPAPI (`app/core/dpapi.mjs`) for the current Windows
+account and stored as `passwordEnc` in `data/config.json`. Encryption runs through PowerShell's
+`ProtectedData` (Node has no DPAPI binding); the plaintext is passed over stdin and the ciphertext
+comes back as base64. On load, `loadConfigAsync()` decrypts the stored values into memory only, so
+routing uses plaintext while the file keeps ciphertext. On a non-Windows host DPAPI is unavailable
+and the file keeps plaintext (development only).
+
 ## Monitoring
 
 Every `intervalSec` (default 60) the monitor records:
@@ -69,7 +78,8 @@ Every `intervalSec` (default 60) the monitor records:
   `speed.cloudflare.com/__down?bytes=…`, stability (successes / samples, window 20), connection
   load (router stats), last error.
 
-History is capped by `historyLimit` and stored in `data/monitor.json`.
+History is capped by `historyLimit` and stored in `data/monitor.json`. The UI renders the last
+samples as sparklines (latency and speed) above the per-proxy cards.
 
 ## Server side
 

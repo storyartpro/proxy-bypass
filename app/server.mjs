@@ -9,7 +9,7 @@ import { createLocalProxy, LocalRouter, classify, readUpstream } from "./core/lo
 import { Monitor } from "./core/monitor.mjs";
 import { UpstreamManager } from "./core/upstreams.mjs";
 import { enableSystemProxy, disableSystemProxy, readSystemProxy } from "./core/system-proxy.mjs";
-import { loadConfig, saveConfig, dataRoot, defaultConfig } from "./core/store.mjs";
+import { loadConfig, loadConfigAsync, writeConfig, dataRoot, defaultConfig } from "./core/store.mjs";
 import * as servers from "./core/servers.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -41,7 +41,7 @@ const monitor = new Monitor({ manager, log, stats });
 const state = { proxyRunning: false, pcProxyEnabled: false, pcProxyError: null, scannerTimer: null, lastScan: null };
 
 /** Fill empty SOCKS5 credentials from the secrets file on first start. */
-function hydrateProxyCredentials() {
+async function hydrateProxyCredentials() {
   let changed = false;
   for (const item of config.proxies) {
     if (item.type === "socks5" && !item.login && !item.password && config.secretsFile) {
@@ -58,7 +58,7 @@ function hydrateProxyCredentials() {
     }
   }
   if (changed) {
-    config = saveConfig(config);
+    config = await writeConfig(config);
     log("прокси: логин и пароль подтянуты из файла секретов");
   }
 }
@@ -119,7 +119,7 @@ async function scan() {
     }
   }
   if (found.length) {
-    config = saveConfig(config);
+    config = await writeConfig(config);
     syncForcedHosts();
     log(`сканер: добавлено ${found.length} адрес(ов): ${found.map((item) => item.host).join(", ")}`);
     if (config.autoPushToServers) {
@@ -237,7 +237,7 @@ const routes = {
       localPort: item.type === "ssh" ? Number(item.localPort || 1081) : undefined,
       enabled: item.enabled !== false,
     }));
-    config = saveConfig(config);
+    config = await writeConfig(config);
     manager.setProxies(config.proxies);
     await manager.refresh();
     return { ok: true, ...manager.snapshot() };
@@ -249,7 +249,7 @@ const routes = {
     if (!/^[a-z0-9][a-z0-9.-]*\.[a-z0-9-]{2,}$/.test(host)) throw new Error("некорректный домен");
     if (!config.blocked.includes(host)) {
       config.blocked.push(host);
-      config = saveConfig(config);
+      config = await writeConfig(config);
       syncForcedHosts();
       log(`список: добавлен ${host}`);
     }
@@ -258,7 +258,7 @@ const routes = {
   "POST /api/blocked/remove": async (body) => {
     const host = String(body.host || "").trim().toLowerCase();
     config.blocked = config.blocked.filter((item) => item !== host);
-    config = saveConfig(config);
+    config = await writeConfig(config);
     syncForcedHosts();
     log(`список: удалён ${host}`);
     return { ok: true, blocked: config.blocked };
@@ -267,13 +267,13 @@ const routes = {
   "POST /api/scanner": async (body) => {
     config.scanner.enabled = body.enabled !== false;
     if (Number.isFinite(body.intervalMin)) config.scanner.intervalMin = Math.max(2, Math.trunc(body.intervalMin));
-    config = saveConfig(config);
+    config = await writeConfig(config);
     scheduleScanner();
     return { ok: true, scanner: config.scanner };
   },
   "POST /api/settings": async (body) => {
     if (body.autoPushToServers !== undefined) config.autoPushToServers = Boolean(body.autoPushToServers);
-    config = saveConfig(config);
+    config = await writeConfig(config);
     return { ok: true, autoPushToServers: config.autoPushToServers };
   },
   "GET /api/servers": async () => ({ ok: true, servers: await serverListStatuses(true) }),
@@ -283,14 +283,14 @@ const routes = {
     await servers.testConnection(alias);
     if (!config.servers.some((item) => item.alias === alias)) {
       config.servers.push({ alias, label: String(body.label || alias).slice(0, 80) });
-      config = saveConfig(config);
+      config = await writeConfig(config);
     }
     return { ok: true, servers: await serverListStatuses(true) };
   },
   "POST /api/servers/remove": async (body) => {
     const alias = String(body.alias || "");
     config.servers = config.servers.filter((item) => item.alias !== alias);
-    config = saveConfig(config);
+    config = await writeConfig(config);
     serverCache.delete(alias);
     return { ok: true, servers: config.servers };
   },
@@ -325,7 +325,7 @@ const routes = {
   "POST /api/monitor/config": async (body) => {
     if (body.enabled !== undefined) config.monitoring.enabled = Boolean(body.enabled);
     if (Number.isFinite(body.intervalSec)) config.monitoring.intervalSec = Math.max(15, Math.trunc(body.intervalSec));
-    config = saveConfig(config);
+    config = await writeConfig(config);
     monitor.configure(config.monitoring);
     monitor.start();
     return { ok: true, monitoring: { enabled: config.monitoring.enabled, intervalSec: config.monitoring.intervalSec } };
@@ -391,15 +391,16 @@ function openWindow() {
 
 async function main() {
   fs.mkdirSync(dataRoot(), { recursive: true });
+  config = await loadConfigAsync();
   // The workstation must not route its own traffic through the managed servers:
   // any legacy SSH-tunnel entry in the proxy list is dropped.
   const sshEntries = config.proxies.filter((item) => item.type === "ssh");
   if (sshEntries.length) {
     config.proxies = config.proxies.filter((item) => item.type !== "ssh");
-    config = saveConfig(config);
+    config = await writeConfig(config);
     log(`прокси: убраны SSH-туннели из локального списка (${sshEntries.length})`);
   }
-  hydrateProxyCredentials();
+  await hydrateProxyCredentials();
   manager.setProxies(config.proxies);
   syncForcedHosts();
   monitor.configure(config.monitoring);

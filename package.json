@@ -25,7 +25,7 @@
   ],
   "scripts": {
     "start": "node app/server.mjs",
-    "test": "node --test test/socks.test.mjs"
+    "test": "node --test test/socks.test.mjs test/dpapi.test.mjs"
   },
   "keywords": [
     "proxy",

@@ -17,8 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Run SOCKS5 protocol tests
-        run: node --test test/socks.test.mjs
+      - name: Run protocol and DPAPI tests
+        run: node --test test/socks.test.mjs test/dpapi.test.mjs
       - name: Syntax check
         shell: pwsh
         run: |

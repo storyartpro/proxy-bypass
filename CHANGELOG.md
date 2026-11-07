@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Windows DPAPI encryption for stored proxy passwords (`passwordEnc` in `config.json`); plaintext
+  passwords are migrated on the next save.
+- Sparkline charts for proxy latency and speed in the monitoring tab.
+- Documentation screenshots rendered with demo data, and a GitHub Pages landing page.
+
+### Security
+
+- Proxy credentials are no longer written to disk in plain text when DPAPI is available.
+
 ## [0.1.0] — 2026-11-07
 
 First public release.

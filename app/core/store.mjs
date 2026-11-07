@@ -1,6 +1,7 @@
 // Persistent configuration and state for the proxy app.
 import fs from "node:fs";
 import path from "node:path";
+import { dpapiAvailable, protectSecret, unprotectSecret } from "./dpapi.mjs";
 
 export function dataRoot() {
   if (process.env.PROXY_APP_DATA) return process.env.PROXY_APP_DATA;
@@ -102,12 +103,45 @@ export function loadConfig() {
   }
 }
 
-export function saveConfig(config) {
+/**
+ * Persist the configuration. Passwords are encrypted with Windows DPAPI
+ * (`passwordEnc`) and never written in plain text when DPAPI is available.
+ */
+export async function writeConfig(config) {
   fs.mkdirSync(dataRoot(), { recursive: true });
   const next = { ...config, updatedAt: new Date().toISOString() };
-  fs.writeFileSync(CONFIG_PATH(), JSON.stringify(next, null, 2), "utf8");
+  const copy = JSON.parse(JSON.stringify(next));
+  for (const proxy of copy.proxies || []) {
+    if (proxy.password) {
+      const ciphertext = await protectSecret(proxy.password);
+      if (ciphertext) {
+        proxy.passwordEnc = ciphertext;
+        delete proxy.password;
+      }
+    }
+  }
+  fs.writeFileSync(CONFIG_PATH(), JSON.stringify(copy, null, 2), "utf8");
   return next;
 }
+
+/** Load the configuration and decrypt stored proxy passwords. */
+export async function loadConfigAsync() {
+  const config = loadConfig();
+  let changed = false;
+  for (const proxy of config.proxies || []) {
+    if (proxy.passwordEnc && !proxy.password) {
+      const plain = await unprotectSecret(proxy.passwordEnc);
+      if (plain) {
+        proxy.password = plain;
+        changed = true;
+      }
+    }
+  }
+  if (changed) return config;
+  return config;
+}
+
+export { dpapiAvailable };
 
 export function defaultConfig() {
   return clone(DEFAULTS);

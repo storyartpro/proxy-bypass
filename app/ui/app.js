@@ -142,6 +142,33 @@ function clearProxyForm() {
   $("new-type").dispatchEvent(new Event("change"));
 }
 
+function renderSparkline(container, values, color, unit) {
+  const points = values.filter((value) => typeof value === "number" && Number.isFinite(value));
+  if (!container) return;
+  if (points.length < 2) {
+    container.innerHTML = '<div class="empty">недостаточно данных</div>';
+    return;
+  }
+  const width = 320;
+  const height = 48;
+  const pad = 4;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const step = (width - pad * 2) / (points.length - 1);
+  const path = points
+    .map((value, index) => {
+      const x = pad + index * step;
+      const y = height - pad - ((value - min) / span) * (height - pad * 2);
+      return `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  container.innerHTML =
+    `<svg class="spark" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" title="${points.length} замеров">`
+    + `<path d="${path}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" />`
+    + `</svg><div class="empty">${points.length} замеров · ${min.toFixed(1)}–${max.toFixed(1)} ${unit}</div>`;
+}
+
 function renderMonitor(data) {
   const latest = data.latest;
   const ip = latest?.mainIp;
@@ -179,6 +206,11 @@ function renderMonitor(data) {
       (row) => `<tr><td>${new Date(row.at).toLocaleTimeString("ru-RU")}</td><td>${escapeHtml(row.mainIp || "—")}</td><td>${row.latencyMs != null ? `${row.latencyMs} мс` : "—"}</td><td>${escapeHtml((latest?.proxies?.[row.activeProxyId]?.name) || row.activeProxyId || "—")}</td><td>${row.connections ?? "—"}</td></tr>`,
     )
     .join("");
+
+  const activeId = latest?.activeProxyId;
+  const series = (data.history || []).map((row) => (row.proxies && activeId ? row.proxies[activeId] || {} : {}));
+  renderSparkline($("chart-latency"), series.map((row) => row.latencyMs), "#3d8bfd", "мс");
+  renderSparkline($("chart-speed"), series.map((row) => row.speedMbps), "#35c46b", "Мбит/с");
 
   $("mon-enabled").checked = Boolean(data.enabled);
   $("mon-interval").value = data.intervalSec ?? 60;

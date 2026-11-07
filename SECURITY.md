@@ -20,9 +20,10 @@ sensitive assets are:
 
 ## Known limitations
 
-- Proxy credentials are stored unencrypted on the workstation. Protect the Windows account and
-  disk (BitLocker) until DPAPI encryption lands.
-- Anyone with local user access can read `data/config.json` and the server list.
+- Proxy passwords are encrypted with Windows DPAPI for the current account, so a stolen config
+  file is not directly readable elsewhere — but code running as the same Windows user can decrypt
+  it. Protect the Windows account and disk (BitLocker).
+- The proxy address, login and list of blocked hosts in `data/config.json` are still readable.
 
 ## Reporting a vulnerability
 
