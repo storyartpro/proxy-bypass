@@ -10,7 +10,9 @@ import { socksConnect, connectTcp } from "./local-proxy.mjs";
 
 const MAX_PROXIES = 5;
 const HEALTH_TARGET = "www.google.com";
-const HEALTH_TIMEOUT_MS = 8000;
+// Providers can be slow under load: a 8 s probe used to mark a working proxy
+// dead and drop the whole route. 20 s tolerates slow-but-alive handshakes.
+const HEALTH_TIMEOUT_MS = 20000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -44,6 +46,7 @@ export class UpstreamManager {
     this.tunnels = new Map();
     this.pendingTunnels = new Map();
     this.activeId = null;
+    this.downStreak = 0;
     this.timer = null;
     this.refreshing = false;
     this.listeners = new Set();
@@ -172,6 +175,21 @@ export class UpstreamManager {
         if (healthy && !chosen) chosen = proxy;
       }
       const nextId = chosen ? chosen.id : null;
+      if (nextId === null && this.activeId && this.downStreak < 1) {
+        // One failed sweep is not enough evidence to drop a route that was
+        // working: a provider may be slow or briefly throttling. Keep it until
+        // the next sweep also fails.
+        this.downStreak += 1;
+        this.log("failover: проверка не прошла — сохраняю прежний маршрут до следующего цикла");
+        this.emit();
+        return this.snapshot();
+      }
+      if (nextId === this.activeId) {
+        this.downStreak = 0;
+        return this.snapshot();
+      }
+      if (nextId === null) this.downStreak += 1;
+      else this.downStreak = 0;
       if (nextId !== this.activeId) {
         const previous = this.activeId;
         this.activeId = nextId;

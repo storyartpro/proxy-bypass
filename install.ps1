@@ -1,4 +1,4 @@
-﻿# Установка Proxy Bypass в %LOCALAPPDATA%\ProxyApp + автозапуск при входе в Windows.
+# Установка Proxy Bypass в %LOCALAPPDATA%\ProxyApp + автозапуск при входе в Windows.
 # Автозапуск делается ярлыком в папке «Автозагрузка» — права администратора не нужны.
 $ErrorActionPreference = 'Stop'
 
@@ -13,7 +13,8 @@ foreach ($item in @('app', 'start.cmd', 'proxy-app.vbs', 'README.md')) {
 $dataTarget = Join-Path $target 'data'
 New-Item -ItemType Directory -Force -Path $dataTarget | Out-Null
 $dataSource = Join-Path $source 'data\config.json'
-if (Test-Path $dataSource) {
+$dataExisting = Join-Path $dataTarget 'config.json'
+if ((Test-Path $dataSource) -and -not (Test-Path $dataExisting)) {
     Copy-Item $dataSource $dataTarget -Force
 }
 

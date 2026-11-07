@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-11-07
+
+### Changed
+
+- Proxy health checks now use a 20-second timeout and require two consecutive failed sweeps before
+  the active route is dropped, so a slow provider no longer takes the bypass down instantly.
+
+### Fixed
+
+- The installer no longer overwrites an existing `data/config.json` in the installed location,
+  keeping the user's settings and encrypted credentials intact.
+
 ## [0.1.2] - 2026-11-07
 
 ### Added
@@ -81,3 +93,4 @@ First public release.
 [0.1.1]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.1
 [0.1.2]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.2
 [0.1.1]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.1
+[0.1.3]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.3
