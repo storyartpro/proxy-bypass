@@ -1,6 +1,6 @@
 {
   "name": "proxy-bypass",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": false,
   "description": "Windows 11 control centre for selective proxy bypass: up to five proxies with failover, blocked-host list, automatic scanner, monitoring, and Linux servers managed over SSH.",
   "type": "module",

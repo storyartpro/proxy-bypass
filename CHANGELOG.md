@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.4] - 2026-11-07
+
+### Fixed
+
+- The Start-menu shortcut opens the window again when the app is already running: the second launch
+  detects the live interface before binding the routing proxy, so the busy proxy port no longer
+  kills it silently.
+- The installer now mirrors the `app/` tree with robocopy (`/MIR`). `Copy-Item -Recurse` into an
+  existing folder silently kept old files on Windows PowerShell 5.1, so reinstalls ran stale code.
+- When no proxy is healthy, blocked-list hosts fall back to a direct connection instead of failing
+  every request with a 502.
+
 ## [0.1.3] - 2026-11-07
 
 ### Changed
@@ -94,3 +106,4 @@ First public release.
 [0.1.2]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.2
 [0.1.1]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.1
 [0.1.3]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.3
+[0.1.4]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.4

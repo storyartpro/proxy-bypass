@@ -1,4 +1,4 @@
-# Установка Proxy Bypass в %LOCALAPPDATA%\ProxyApp + автозапуск при входе в Windows.
+﻿# Установка Proxy Bypass в %LOCALAPPDATA%\ProxyApp + автозапуск при входе в Windows.
 # Автозапуск делается ярлыком в папке «Автозагрузка» — права администратора не нужны.
 $ErrorActionPreference = 'Stop'
 
@@ -7,9 +7,17 @@ $target = Join-Path $env:LOCALAPPDATA 'ProxyApp'
 
 Write-Host "Копирую приложение в $target ..."
 New-Item -ItemType Directory -Force -Path $target | Out-Null
-foreach ($item in @('app', 'start.cmd', 'proxy-app.vbs', 'README.md')) {
-    Copy-Item (Join-Path $source $item) $target -Recurse -Force
+# robocopy merges the app tree reliably; Copy-Item -Recurse into an existing
+# folder silently keeps old files on Windows PowerShell 5.1.
+$roboSource = Join-Path $source 'app'
+$roboTarget = Join-Path $target 'app'
+New-Item -ItemType Directory -Force -Path $roboTarget | Out-Null
+$null = robocopy $roboSource $roboTarget /MIR /NFL /NDL /NJH /NJS /NP
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" }
+foreach ($item in @('start.cmd', 'proxy-app.vbs', 'README.md')) {
+    Copy-Item (Join-Path $source $item) $target -Force
 }
+$LASTEXITCODE = 0
 $dataTarget = Join-Path $target 'data'
 New-Item -ItemType Directory -Force -Path $dataTarget | Out-Null
 $dataSource = Join-Path $source 'data\config.json'

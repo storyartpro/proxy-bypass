@@ -1,6 +1,7 @@
 // Proxy app backend: one process that owns the local routing proxy, the
 // failover list, the blocked-host list, the scanner and the server fleet.
 import http from "node:http";
+import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -376,6 +377,20 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
+/** True when something already serves the app UI on the loopback port. */
+function interfaceAlive(port) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: "127.0.0.1", port });
+    const done = (value) => {
+      socket.destroy();
+      resolve(value);
+    };
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    setTimeout(() => done(false), 1200).unref?.();
+  });
+}
+
 function openWindow() {
   if (process.env.PROXY_APP_NO_WINDOW) return;
   const url = `http://127.0.0.1:${config.appPort || 8077}`;
@@ -392,6 +407,17 @@ function openWindow() {
 
 async function main() {
   fs.mkdirSync(dataRoot(), { recursive: true });
+  const interfacePort = Number(process.env.PROXY_APP_PORT || config.appPort || 8077);
+  // If the interface already answers, this launch only has to bring the window
+  // back — exactly what a Start-menu click expects while the app keeps running
+  // in the background. Check this before binding the routing proxy, otherwise
+  // the proxy port conflict would kill the process first.
+  if (await interfaceAlive(interfacePort)) {
+    log(`приложение уже запущено на 127.0.0.1:${interfacePort} — открываю окно`);
+    openWindow();
+    setTimeout(() => process.exit(0), 1500);
+    return;
+  }
   config = await loadConfigAsync();
   // The workstation must not route its own traffic through the managed servers:
   // any legacy SSH-tunnel entry in the proxy list is dropped.
@@ -408,12 +434,24 @@ async function main() {
   manager.onChange(async () => {
     const upstream = await activeUpstream();
     if (upstream) router.upstream = upstream;
+    router.upstreamAvailable = Boolean(upstream);
     log(`активный прокси: ${manager.activeProxy() ? manager.activeProxy().name : "нет"}`);
   });
   const upstream = await activeUpstream();
   if (upstream) router.upstream = upstream;
+  router.upstreamAvailable = Boolean(upstream);
 
-  await proxy.start();
+  try {
+    await proxy.start();
+  } catch (error) {
+    if (error && error.code === "EADDRINUSE") {
+      log(`порт ${config.port} занят другим экземпляром — открываю его окно`);
+      openWindow();
+      setTimeout(() => process.exit(0), 1500);
+      return;
+    }
+    throw error;
+  }
   state.proxyRunning = true;
   log(`локальный прокси слушает 127.0.0.1:${config.port}`);
 

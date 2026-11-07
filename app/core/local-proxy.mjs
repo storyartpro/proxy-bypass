@@ -434,6 +434,9 @@ export class LocalRouter {
     this.timeoutMs = options.timeoutMs || 5000;
     this.verdicts = new Map();
     this.forced = new Set();
+    // Set by the app: when no upstream proxy is healthy, forced hosts fall back
+    // to a direct connection instead of failing with a 502.
+    this.upstreamAvailable = true;
     this.stateFile = path.join(dataDir(), "local-state.json");
     this.load();
   }
@@ -528,7 +531,7 @@ export class LocalRouter {
 
   async routeFor(host, port = 443) {
     if (isAlwaysDirect(host)) return "direct";
-    if (this.isForced(host)) return "blocked";
+    if (this.isForced(host)) return this.upstreamAvailable === false ? "direct" : "blocked";
     const known = this.verdicts.get(host);
     if (known && isIpLiteral(host)) {
       // IP reachability can change as the provider rotates, so re-probe stale
