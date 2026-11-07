@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.10] - 2026-11-07
+
+### Fixed
+
+- **Tray icon and menu.** The icon was created without a Windows Forms message loop, so it could
+  stay invisible and its menu items never received clicks. The tray is now a real WinForms
+  application (`-Sta`, `Application.Run`, a timer for backend polling): the icon appears,
+  "Открыть окно" / toggle / "Закрыть полностью" work, and it always exits when the backend stops.
+- **Slow startup.** The window used to open only after the proxy health sweep; with a dead proxy the
+  UI stayed hidden for up to 40 seconds. The interface, window and tray now start right after the
+  routing proxy, and the proxies are probed in parallel, so the window appears in about a second.
+- The API no longer exposes the encrypted password blob (`passwordEnc`) to the UI.
+
+### Verified
+
+- `/api/pc` answers 1 s after the shortcut click; both proxies stay in the list after restarts.
+- Tray child process is present, `tray.log` records clicks ("open window from tray").
+- Failover keeps the healthy first proxy active while the second one times out.
+
 ## [0.1.9] - 2026-11-07
 
 ### Added
@@ -174,3 +193,4 @@ First public release.
 [0.1.7]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.7
 [0.1.8]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.8
 [0.1.9]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.9
+[0.1.10]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.10

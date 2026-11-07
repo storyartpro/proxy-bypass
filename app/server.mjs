@@ -222,7 +222,8 @@ function proxiesView() {
     ...snapshot,
     proxies: snapshot.proxies.map((item) => {
       const raw = configured.get(item.id) || {};
-      return { ...raw, ...item };
+      const { passwordEnc, ...rest } = raw;
+      return { ...rest, ...item };
     }),
   };
 }
@@ -549,7 +550,7 @@ function startTray() {
     const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
     const child = spawn(
       powershell,
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", TRAY_SCRIPT],
+      ["-Sta", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", TRAY_SCRIPT],
       { stdio: ["ignore", "ignore", "pipe"], windowsHide: true, cwd: path.dirname(TRAY_SCRIPT) },
     );
     child.stderr.on("data", (chunk) => {
@@ -590,6 +591,27 @@ function openWindow() {
   } catch {
     /* the browser window is a nicety, not a requirement */
   }
+}
+
+/** Bring the UI, the window and the tray up. Called before the slow network
+ *  probes so the user sees the window immediately. */
+function startInterface(port) {
+  server.on("error", (error) => {
+    if (error && error.code === "EADDRINUSE") {
+      // Already running: the Start-menu shortcut must still open the window
+      // instead of silently doing nothing.
+      log(`интерфейс уже запущен на порту ${port} — открываю окно существующего экземпляра`);
+      openWindow();
+      setTimeout(() => process.exit(0), 1500);
+      return;
+    }
+    log(`сервер интерфейса: ${error.message}`);
+  });
+  server.listen(port, "127.0.0.1", () => {
+    log(`интерфейс: http://127.0.0.1:${port}`);
+    openWindow();
+    startTray();
+  });
 }
 
 async function main() {
@@ -647,6 +669,7 @@ async function main() {
     enablePc().catch((error) => log(`автовключение прокси на ПК: ${error.message}`));
   }
 
+  startInterface(interfacePort);
   await manager.start(20000);
   // Passwords rotate outside the app: re-read the secrets file periodically so a
   // stale credential cannot keep the only proxy marked as failing.
@@ -662,24 +685,6 @@ async function main() {
   startLocalTunnel().catch((error) => log(`туннель для приложений: ${error.message}`));
   scheduleScanner();
   setTimeout(() => scan().catch((error) => log(`первый скан: ${error.message}`)), 3000);
-
-  const port = Number(process.env.PROXY_APP_PORT || config.appPort || 8077);
-  server.on("error", (error) => {
-    if (error && error.code === "EADDRINUSE") {
-      // Already running: the Start-menu shortcut must still open the window
-      // instead of silently doing nothing.
-      log(`интерфейс уже запущен на порту ${port} — открываю окно существующего экземпляра`);
-      openWindow();
-      setTimeout(() => process.exit(0), 1500);
-      return;
-    }
-    log(`сервер интерфейса: ${error.message}`);
-  });
-  server.listen(port, "127.0.0.1", () => {
-    log(`интерфейс: http://127.0.0.1:${port}`);
-    openWindow();
-    startTray();
-  });
 }
 
 process.on("uncaughtException", (error) => log(`fatal: ${error.stack || error.message}`));

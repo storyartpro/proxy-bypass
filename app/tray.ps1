@@ -1,9 +1,10 @@
 ﻿# Proxy Bypass tray controller.
-# Keeps an icon in the notification area while the backend runs; can reopen the
-# window, toggle the PC proxy and stop everything. Closing the browser window
-# leaves this icon (and the app) alive.
+# A real WinForms message loop: without it the icon may not appear and the menu
+# items never receive clicks.
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+
+[System.Windows.Forms.Application]::EnableVisualStyles()
 
 $base = 'http://127.0.0.1:8077'
 $backendPort = 8077
@@ -36,11 +37,6 @@ function Test-Backend {
     }
 }
 
-function Open-Window {
-    if (-not $browser) { return }
-    Start-Process -FilePath $browser -ArgumentList @("--app=$base/", '--window-size=1180,860', '--no-first-run')
-}
-
 function Invoke-Api([string]$method, [string]$path, $body) {
     try {
         $params = @{ Uri = "$base$path"; Method = $method; TimeoutSec = 15; UseBasicParsing = $true }
@@ -54,43 +50,73 @@ function Invoke-Api([string]$method, [string]$path, $body) {
     }
 }
 
+function Open-Window {
+    if (-not $browser) { return }
+    Write-TrayLog 'open window from tray'
+    Start-Process -FilePath $browser -ArgumentList @("--app=$base/", '--window-size=1180,860', '--no-first-run')
+}
+
 $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Icon = [System.Drawing.SystemIcons]::Application
 $tray.Text = 'Proxy Bypass'
 $tray.Visible = $true
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
-$openItem = $menu.Items.Add('Открыть окно')
-$openItem.add_Click({ Open-Window })
 
-$toggleItem = $menu.Items.Add('Включить / выключить прокси на ПК')
+$openItem = New-Object System.Windows.Forms.ToolStripMenuItem('Открыть окно')
+$openItem.add_Click({ Open-Window })
+$menu.Items.Add($openItem) | Out-Null
+
+$toggleItem = New-Object System.Windows.Forms.ToolStripMenuItem('Включить / выключить прокси на ПК')
 $toggleItem.add_Click({
     $pc = Invoke-Api 'GET' '/api/pc' $null
     if ($null -eq $pc) { return }
     $want = -not [bool]$pc.pcProxyEnabled
     Invoke-Api 'POST' '/api/pc/toggle' @{ enabled = $want } | Out-Null
+    Write-TrayLog ("toggled pc proxy -> {0}" -f $want)
 })
+$menu.Items.Add($toggleItem) | Out-Null
 
 $menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 
-$closeItem = $menu.Items.Add('Закрыть полностью')
+$closeItem = New-Object System.Windows.Forms.ToolStripMenuItem('Закрыть полностью')
 $closeItem.add_Click({
+    Write-TrayLog 'full shutdown requested'
     Invoke-Api 'POST' '/api/shutdown' @{} | Out-Null
+    $script:closing = $true
 })
+$menu.Items.Add($closeItem) | Out-Null
 
 $tray.ContextMenuStrip = $menu
 $tray.add_DoubleClick({ Open-Window })
+$tray.add_MouseClick({
+    param($sender, $eventArgs)
+    if ($eventArgs.Button -eq [System.Windows.Forms.MouseButtons]::Left) { Open-Window }
+})
 
-# Exit as soon as the backend is gone (full shutdown, crash or manual stop).
-Write-TrayLog 'tray started'
-while ($true) {
-    Start-Sleep -Seconds 4
+# Poll the backend with a WinForms timer so clicks and the timer share one loop.
+$script:closing = $false
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 4000
+$timer.add_Tick({
+    if ($script:closing) { return }
     $alive = Test-Backend
-    Write-TrayLog ("backend alive: {0}" -f $alive)
     if (-not $alive) {
         Write-TrayLog 'backend gone, exiting'
+        $timer.Stop()
         $tray.Visible = $false
         $tray.Dispose()
-        exit 0
+        [System.Windows.Forms.Application]::Exit()
     }
+})
+$timer.Start()
+
+Write-TrayLog 'tray started'
+try {
+    [System.Windows.Forms.Application]::Run()
+} finally {
+    $timer.Stop()
+    $tray.Visible = $false
+    $tray.Dispose()
+    Write-TrayLog 'tray stopped'
 }

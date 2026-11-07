@@ -160,20 +160,23 @@ export class UpstreamManager {
     }
   }
 
-  /** Probe every enabled proxy in priority order and activate the first healthy one. */
+  /** Probe every enabled proxy in parallel and activate the first healthy one in priority order. */
   async refresh() {
     if (this.refreshing) return this.snapshot();
     this.refreshing = true;
     try {
-      let chosen = null;
       for (const proxy of this.proxies) {
         if (!proxy.enabled) {
           this.health.set(proxy.id, { healthy: false, latencyMs: null, checkedAt: new Date().toISOString(), error: "выключен" });
-          continue;
         }
-        const healthy = await this.checkProxy(proxy);
-        if (healthy && !chosen) chosen = proxy;
       }
+      const enabled = this.proxies.filter((proxy) => proxy.enabled);
+      // Parallel probes: a sequential sweep with a slow proxy could keep the UI
+      // waiting for tens of seconds before the first window appears.
+      const results = await Promise.all(
+        enabled.map(async (proxy) => ({ proxy, healthy: await this.checkProxy(proxy) })),
+      );
+      const chosen = results.find((item) => item.healthy)?.proxy || null;
       const nextId = chosen ? chosen.id : null;
       if (nextId === null && this.activeId && this.downStreak < 1) {
         // One failed sweep is not enough evidence to drop a route that was
