@@ -49,6 +49,7 @@ Proxy Bypass is built around measurements instead:
 | **Autostart** | Installer puts the app into `%LOCALAPPDATA%\ProxyApp`, adds Start-menu and Startup shortcuts; a second launch just reopens the window. |
 | **App tunnel** | Optional local SOCKS5 tunnel (`ssh -N -D 127.0.0.1:1081`) kept alive by the app for programs that only accept their own proxy setting — Telegram, for example. |
 | **Window and tray** | Closing the window keeps the app working in the notification area; the tray menu reopens the window, toggles the PC proxy and has **Закрыть полностью** — stop every component, restore Windows proxy settings and exit. |
+| **Applications** | Pick a running process or a Windows service, remember it, and the app keeps discovering every network channel it opens (remote IPs and reverse-DNS names) and pins those endpoints to the proxy — even channels that would otherwise be classified as direct. Disable or forget the application to stop and clean the discovery. |
 
 ## How it works
 

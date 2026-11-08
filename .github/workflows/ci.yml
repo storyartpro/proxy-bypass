@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: 20
       - name: Run protocol and DPAPI tests
-        run: node --test test/socks.test.mjs test/dpapi.test.mjs test/targets.test.mjs
+        run: node --test test/socks.test.mjs test/dpapi.test.mjs test/targets.test.mjs test/apps.test.mjs
       - name: Syntax check
         shell: pwsh
         run: |
@@ -26,4 +26,5 @@ jobs:
             node --check $file
             if ($LASTEXITCODE -ne 0) { throw "syntax: $file" }
           }
+
 

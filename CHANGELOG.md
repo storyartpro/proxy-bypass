@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-08
+
+### Added
+
+- **Application tracking module** (`app/core/apps.mjs`): choose a running process or a Windows
+  service, remember it, and the app keeps collecting every network channel that application opens —
+  public remote IPs plus reverse-DNS names — and pins them to the proxy through the blocked list.
+  Profiles can be disabled (stop contributing) or forgotten (remove their channels), with a "scan
+  now" action and automatic refresh every 15 seconds while the application runs.
+- New **Приложения** tab: searchable process/service lists with connection state, tracked profiles
+  with running state, channel count, enable toggle and forget button.
+- The blocked list is now materialised from `manualBlocked` + enabled profiles (`mergeBlocked()`),
+  so removing an application never touches hand-maintained entries.
+- Unit tests for the tracking helpers (19 tests total).
+
 ## [0.2.0] - 2026-11-08
 
 ### Added
@@ -216,3 +231,4 @@ First public release.
 [0.1.9]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.9
 [0.1.10]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.10
 [0.2.0]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.2.0
+[0.3.0]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.3.0

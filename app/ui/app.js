@@ -43,6 +43,67 @@ function renderTunnel(tunnel) {
   $("tunnel-status").textContent = `туннель: ${labels[tunnel.status] || tunnel.status}${tunnel.status === "running" ? ` (127.0.0.1:${tunnel.port})` : ""}`;
 }
 
+function renderApps() {
+  const data = state.appsData;
+  if (!data) return;
+  const kind = $("apps-kind").value;
+  const query = $("apps-search").value.trim().toLowerCase();
+  const tbody = $("apps-available").querySelector("tbody");
+  if (kind === "service") {
+    const rows = (data.services || []).filter((item) => !query
+      || String(item.name).toLowerCase().includes(query)
+      || String(item.label || "").toLowerCase().includes(query));
+    $("apps-hint").textContent = `${rows.length} служб`;
+    tbody.innerHTML = rows.length
+      ? rows.slice(0, 300).map((item) => `
+        <tr>
+          <td>${escapeHtml(item.label || item.name)}<div class="muted">${escapeHtml(item.name)}</div></td>
+          <td>${item.pid || "—"}</td>
+          <td>${escapeHtml(item.state || "—")}</td>
+          <td class="actions"><button data-track-kind="service" data-track-name="${escapeHtml(item.name)}" data-track-label="${escapeHtml(item.label || item.name)}">Отслеживать</button></td>
+        </tr>`).join("")
+      : '<tr><td colspan="4" class="muted">ничего не найдено</td></tr>';
+  } else {
+    const rows = (data.processes || []).filter((item) => !query || String(item.name).toLowerCase().includes(query));
+    $("apps-hint").textContent = `${rows.length} процессов${query ? "" : " (сначала с сетью)"}`;
+    tbody.innerHTML = rows.length
+      ? rows.slice(0, 300).map((item) => `
+        <tr>
+          <td>${escapeHtml(item.name)}<div class="muted">${escapeHtml((item.path || "").slice(0, 90))}</div></td>
+          <td>${item.pid}</td>
+          <td>${item.connected ? '<span class="badge ok">есть соединения</span>' : '<span class="badge">без сети</span>'}</td>
+          <td class="actions"><button data-track-kind="process" data-track-name="${escapeHtml(item.name)}" data-track-label="${escapeHtml(item.name)}">Отслеживать</button></td>
+        </tr>`).join("")
+      : '<tr><td colspan="4" class="muted">ничего не найдено</td></tr>';
+  }
+
+  const profiles = data.profiles || [];
+  $("apps-profiles").querySelector("tbody").innerHTML = profiles.length
+    ? profiles.map((item) => `
+      <tr>
+        <td>${escapeHtml(item.label || item.name)}<div class="muted">${escapeHtml(item.name)}</div></td>
+        <td>${item.kind === "service" ? "служба" : "процесс"}</td>
+        <td>${item.running ? '<span class="badge ok">запущено</span>' : '<span class="badge warn">не запущено</span>'}</td>
+        <td>${item.channels}</td>
+        <td><input type="checkbox" data-app-toggle="${item.id}" ${item.enabled === false ? "" : "checked"} /></td>
+        <td class="actions">
+          <button data-app-action="scan" data-app-id="${item.id}">Найти каналы</button>
+          <button class="danger" data-app-action="untrack" data-app-id="${item.id}">Забыть</button>
+        </td>
+      </tr>`).join("")
+    : '<tr><td colspan="6" class="muted">пока ничего не отслеживается</td></tr>';
+}
+
+async function refreshApps() {
+  try {
+    const data = await api("/api/apps");
+    state.appsData = data;
+    renderApps();
+  } catch (error) {
+    toast(`Приложения: ${error.message}`, true);
+  }
+}
+
 function renderStatus(status) {
   state.status = status;
   $("pc-dot").className = `dot${status.pc.proxyEnabled ? " on" : ""}`;
@@ -299,6 +360,7 @@ function bind() {
       document.querySelectorAll(".tab-page").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
       $(`tab-${button.dataset.tab}`).classList.add("active");
+      if (button.dataset.tab === "apps") refreshApps();
     });
   });
 
@@ -656,6 +718,82 @@ function bind() {
         /* the window may refuse to close; the message above stays */
       }
     }, 1500);
+  });
+
+  $("apps-refresh").addEventListener("click", refreshApps);
+  $("apps-scan").addEventListener("click", async () => {
+    $("apps-scan").disabled = true;
+    try {
+      const data = await api("/api/apps/scan", {});
+      state.blocked = data.blocked || state.blocked;
+      renderBlocked();
+      await refreshApps();
+      toast(`Найдено новых каналов: ${data.added || 0}`);
+    } catch (error) {
+      toast(`Каналы: ${error.message}`, true);
+    } finally {
+      $("apps-scan").disabled = false;
+    }
+  });
+  $("apps-kind").addEventListener("change", () => renderApps());
+  $("apps-search").addEventListener("input", () => renderApps());
+
+  $("apps-available").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-track-kind]");
+    if (!button) return;
+    button.disabled = true;
+    try {
+      await api("/api/apps/track", {
+        kind: button.dataset.trackKind,
+        name: button.dataset.trackName,
+        label: button.dataset.trackLabel,
+      });
+      await refreshApps();
+      const status = await api("/api/status");
+      state.blocked = status.blocked;
+      renderBlocked();
+      toast(`Наблюдение добавлено: ${button.dataset.trackName}`);
+    } catch (error) {
+      toast(`Приложение: ${error.message}`, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  $("apps-profiles").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-app-action]");
+    if (!button) return;
+    const id = button.dataset.appId;
+    button.disabled = true;
+    try {
+      if (button.dataset.appAction === "untrack") {
+        const data = await api("/api/apps/untrack", { id });
+        state.blocked = data.blocked;
+        renderBlocked();
+        toast("Наблюдение отменено, каналы убраны из списка");
+      } else {
+        await api("/api/apps/scan", { id });
+        toast("Каналы обновлены");
+      }
+      await refreshApps();
+    } catch (error) {
+      toast(`Приложение: ${error.message}`, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  $("apps-profiles").addEventListener("change", async (event) => {
+    const input = event.target.closest("input[data-app-toggle]");
+    if (!input) return;
+    try {
+      const data = await api("/api/apps/toggle", { id: input.dataset.appToggle, enabled: input.checked });
+      state.blocked = data.blocked;
+      renderBlocked();
+      await refreshApps();
+    } catch (error) {
+      toast(error.message, true);
+    }
   });
 
   $("new-type").dispatchEvent(new Event("change"));

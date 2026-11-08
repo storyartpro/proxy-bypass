@@ -68,6 +68,26 @@ Concurrent SOCKS handshakes are capped (`maxSocks`) because providers throttle b
 swapped. Disabled entries are skipped. All proxies are ordinary SOCKS5 endpoints; an SSH type exists
 in the type union but is not offered in the UI — the workstation must not route through servers.
 
+## Application tracking
+
+`app/core/apps.mjs` lets the user pin a whole application instead of single hosts:
+
+- `snapshot()` reads processes, Windows services and established TCP connections in one PowerShell
+  call;
+- `pidsForProfile()` resolves a tracked process (all instances by executable name) or a service (its
+  process id plus every process with the service's executable);
+- `channelsForPids()` keeps public remote addresses only (loopback, RFC1918, link-local and CGNAT are
+  dropped) and tries reverse DNS to add a readable domain for each address;
+- `mergeChannels()` deduplicates and caps the profile at 500 channels;
+- the server scans enabled profiles every 15 seconds while the application runs and rebuilds the
+  blocked list.
+
+The blocked list is materialised: `config.manualBlocked` holds user entries, each profile keeps its
+`discovered` channels, and `mergeBlocked()` produces `config.blocked` = manual ∪ enabled profiles.
+Removing or disabling a profile therefore removes exactly its channels and leaves manual entries
+untouched. Discovered endpoints become normal bypass targets, so they are also pushed to servers
+(domain pins and `add-ip` rules) when auto-push is enabled.
+
 ## Credentials at rest
 
 Proxy passwords are encrypted with Windows DPAPI (`app/core/dpapi.mjs`) for the current Windows

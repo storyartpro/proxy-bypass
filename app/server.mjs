@@ -14,6 +14,7 @@ import { loadConfig, loadConfigAsync, writeConfig, dataRoot, defaultConfig } fro
 import * as servers from "./core/servers.mjs";
 import { normalizeTarget, parseTargetList } from "./core/targets.mjs";
 import { expandDomain } from "./core/lookup.mjs";
+import * as apps from "./core/apps.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UI = path.join(HERE, "ui");
@@ -41,7 +42,7 @@ const router = new LocalRouter({ upstream: { host: "127.0.0.1", port: 9, auth: f
 const stats = { active: 0, total: 0 };
 const proxy = createLocalProxy({ router, port: config.port, log, stats });
 const monitor = new Monitor({ manager, log, stats });
-const state = { proxyRunning: false, pcProxyEnabled: false, pcProxyError: null, scannerTimer: null, lastScan: null };
+const state = { proxyRunning: false, pcProxyEnabled: false, pcProxyError: null, scannerTimer: null, appsTimer: null, lastScan: null };
 
 /** Fill/refresh SOCKS5 credentials from the secrets file.
  *
@@ -106,8 +107,33 @@ function syncForcedHosts() {
   for (const host of wanted) router.force(host, true);
 }
 
-/** Add validated targets to the blocked list, persist and apply them. */
+/** The blocked list is materialised from two sources: manual entries and the
+ *  channels of tracked application profiles. */
+function ensureConfigSources() {
+  let changed = false;
+  if (!Array.isArray(config.manualBlocked)) {
+    config.manualBlocked = [...(config.blocked || [])];
+    changed = true;
+  }
+  if (!Array.isArray(config.appProfiles)) {
+    config.appProfiles = [];
+    changed = true;
+  }
+  return changed;
+}
+
+async function rebuildBlocked({ save = true } = {}) {
+  const merged = apps.mergeBlocked(config.manualBlocked, config.appProfiles);
+  const before = JSON.stringify(config.blocked || []);
+  config.blocked = merged;
+  syncForcedHosts();
+  if (save && JSON.stringify(merged) !== before) config = await writeConfig(config);
+  return merged;
+}
+
+/** Add validated targets to the manual part of the blocked list. */
 async function addTargets(values) {
+  const manual = new Set(config.manualBlocked || []);
   const added = [];
   for (const raw of values || []) {
     let target;
@@ -116,14 +142,14 @@ async function addTargets(values) {
     } catch {
       continue;
     }
-    if (!config.blocked.includes(target.value)) {
-      config.blocked.push(target.value);
+    if (!manual.has(target.value)) {
+      manual.add(target.value);
       added.push(target.value);
     }
   }
   if (added.length) {
-    config = await writeConfig(config);
-    syncForcedHosts();
+    config.manualBlocked = [...manual];
+    await rebuildBlocked();
     log(`список: добавлено ${added.length} (${added.slice(0, 5).join(", ")}${added.length > 5 ? "…" : ""})`);
     if (config.autoPushToServers) {
       for (const server of config.servers) {
@@ -132,6 +158,63 @@ async function addTargets(values) {
     }
   }
   return added;
+}
+
+/** Remove one target from the manual list. */
+async function removeManualTarget(value) {
+  const host = String(value || "").trim().toLowerCase();
+  config.manualBlocked = (config.manualBlocked || []).filter((item) => item !== host);
+  await rebuildBlocked();
+  return config.blocked;
+}
+
+/** Sample the endpoints of tracked applications and rebuild the blocked list. */
+async function scanApplicationProfiles(onlyId) {
+  if (!apps.isWindows()) return { ok: false, error: "функция доступна только на Windows" };
+  const snap = await apps.snapshot();
+  const results = [];
+  const addedAll = [];
+  for (const profile of config.appProfiles || []) {
+    if (onlyId && profile.id !== onlyId) continue;
+    if (profile.enabled === false) {
+      results.push({ id: profile.id, skipped: true });
+      continue;
+    }
+    const { pids, running } = apps.pidsForProfile(profile, snap);
+    if (!running) {
+      profile.lastScanAt = new Date().toISOString();
+      results.push({ id: profile.id, running: false, added: 0, channels: (profile.discovered || []).length });
+      continue;
+    }
+    const channels = await apps.channelsForPids(pids, snap);
+    const added = apps.mergeChannels(profile, channels);
+    addedAll.push(...added);
+    results.push({ id: profile.id, running: true, added: added.length, channels: (profile.discovered || []).length, pids: pids.length });
+  }
+  if (addedAll.length) {
+    config = await writeConfig(config);
+    await rebuildBlocked();
+    log(`приложения: новые каналы (${addedAll.length}): ${addedAll.slice(0, 6).join(", ")}${addedAll.length > 6 ? "…" : ""}`);
+    if (config.autoPushToServers) {
+      for (const server of config.servers) {
+        servers.pushBlockedList(server.alias, addedAll).catch((error) => log(`push ${server.alias}: ${error.message}`));
+      }
+    }
+  } else {
+    config = await writeConfig(config);
+  }
+  return { ok: true, scannedAt: new Date().toISOString(), added: addedAll.length, profiles: results };
+}
+
+function scheduleApplicationScanner() {
+  if (state.appsTimer) clearInterval(state.appsTimer);
+  state.appsTimer = null;
+  const enabled = (config.appProfiles || []).filter((profile) => profile.enabled !== false);
+  if (!enabled.length) return;
+  state.appsTimer = setInterval(() => {
+    scanApplicationProfiles().catch((error) => log(`приложения: ${error.message}`));
+  }, 15_000);
+  state.appsTimer.unref?.();
 }
 
 async function activeUpstream() {
@@ -153,19 +236,12 @@ async function scan() {
   for (const host of config.scanner.seeds) {
     const result = await classify(host, upstream, 6000).catch(() => ({ verdict: "unreachable" }));
     if (result.verdict === "blocked" && !config.blocked.includes(host)) {
-      config.blocked.push(host);
       found.push({ host, reason: result.reason });
     }
   }
   if (found.length) {
-    config = await writeConfig(config);
-    syncForcedHosts();
+    await addTargets(found.map((item) => item.host));
     log(`сканер: добавлено ${found.length} адрес(ов): ${found.map((item) => item.host).join(", ")}`);
-    if (config.autoPushToServers) {
-      for (const server of config.servers) {
-        servers.pushBlockedList(server.alias, found.map((item) => item.host)).catch((error) => log(`push ${server.alias}: ${error.message}`));
-      }
-    }
   }
   state.lastScan = { at: new Date().toISOString(), checked: config.scanner.seeds.length, found };
   return { ok: true, ...state.lastScan };
@@ -319,13 +395,7 @@ const routes = {
   "GET /api/blocked": async () => ({ ok: true, blocked: config.blocked, blockedCount: config.blocked.length }),
   "POST /api/blocked/add": async (body) => {
     const target = normalizeTarget(body.host);
-    const host = target.value;
-    if (!config.blocked.includes(host)) {
-      config.blocked.push(host);
-      config = await writeConfig(config);
-      syncForcedHosts();
-      log(`список: добавлен ${host} (${target.kind})`);
-    }
+    await addTargets([target.value]);
     return { ok: true, kind: target.kind, blocked: config.blocked };
   },
   "POST /api/blocked/import": async (body) => {
@@ -379,11 +449,74 @@ const routes = {
   },
   "POST /api/blocked/remove": async (body) => {
     const host = String(body.host || "").trim().toLowerCase();
-    config.blocked = config.blocked.filter((item) => item !== host);
-    config = await writeConfig(config);
-    syncForcedHosts();
+    await removeManualTarget(host);
     log(`список: удалён ${host}`);
     return { ok: true, blocked: config.blocked };
+  },
+  "GET /api/apps": async () => {
+    if (!apps.isWindows()) return { ok: false, error: "функция доступна только на Windows" };
+    const snap = await apps.snapshot();
+    const profiles = (config.appProfiles || []).map((profile) => {
+      const { pids, running } = apps.pidsForProfile(profile, snap);
+      return {
+        ...profile,
+        running,
+        pids: pids.length,
+        channels: (profile.discovered || []).length,
+        samples: (profile.discovered || []).slice(0, 12),
+      };
+    });
+    const connected = new Set((snap.connections || []).map((item) => Number(item.OwningProcess)));
+    const processes = (snap.processes || [])
+      .map((item) => ({ pid: Number(item.ProcessId), name: item.Name, path: item.ExecutablePath || "", connected: connected.has(Number(item.ProcessId)) }))
+      .filter((item) => item.name && item.name.toLowerCase() !== "system")
+      .sort((a, b) => Number(b.connected) - Number(a.connected) || a.name.localeCompare(b.name))
+      .slice(0, 400);
+    const services = (snap.services || [])
+      .map((item) => ({ name: item.Name, label: item.DisplayName, state: item.State, pid: Number(item.ProcessId || 0) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return { ok: true, profiles, processes, services };
+  },
+  "POST /api/apps/track": async (body) => {
+    ensureConfigSources();
+    const profile = apps.normaliseProfileInput(body);
+    const exists = (config.appProfiles || []).some(
+      (item) => item.kind === profile.kind && item.name.toLowerCase() === profile.name.toLowerCase(),
+    );
+    if (exists) throw new Error("этот процесс или служба уже отслеживается");
+    config.appProfiles = [...(config.appProfiles || []), profile];
+    config = await writeConfig(config);
+    await rebuildBlocked();
+    scheduleApplicationScanner();
+    log(`приложения: добавлено наблюдение за ${profile.kind} ${profile.name}`);
+    const result = await scanApplicationProfiles(profile.id).catch((error) => ({ ok: false, error: error.message }));
+    return { ok: true, profile: { ...profile, added: result.added || 0 }, profiles: config.appProfiles, blocked: config.blocked };
+  },
+  "POST /api/apps/untrack": async (body) => {
+    const id = String(body.id || "");
+    const profile = (config.appProfiles || []).find((item) => item.id === id);
+    if (!profile) throw new Error("профиль не найден");
+    config.appProfiles = (config.appProfiles || []).filter((item) => item.id !== id);
+    config = await writeConfig(config);
+    await rebuildBlocked();
+    scheduleApplicationScanner();
+    log(`приложения: наблюдение за ${profile.name} отменено, каналы убраны из списка`);
+    return { ok: true, profiles: config.appProfiles, blocked: config.blocked };
+  },
+  "POST /api/apps/toggle": async (body) => {
+    const id = String(body.id || "");
+    const profile = (config.appProfiles || []).find((item) => item.id === id);
+    if (!profile) throw new Error("профиль не найден");
+    profile.enabled = body.enabled !== false;
+    config = await writeConfig(config);
+    await rebuildBlocked();
+    scheduleApplicationScanner();
+    return { ok: true, profiles: config.appProfiles, blocked: config.blocked };
+  },
+  "POST /api/apps/scan": async (body) => {
+    ensureConfigSources();
+    const result = await scanApplicationProfiles(body.id ? String(body.id) : undefined);
+    return { ...result, profiles: config.appProfiles, blocked: config.blocked };
   },
   "POST /api/scan": async () => scan(),
   "POST /api/scanner": async (body) => {
@@ -706,6 +839,8 @@ async function main() {
     return;
   }
   config = await loadConfigAsync();
+  ensureConfigSources();
+  await rebuildBlocked();
   // The workstation must not route its own traffic through the managed servers:
   // any legacy SSH-tunnel entry in the proxy list is dropped.
   const sshEntries = config.proxies.filter((item) => item.type === "ssh");
@@ -762,6 +897,7 @@ async function main() {
   monitor.start();
   startLocalTunnel().catch((error) => log(`туннель для приложений: ${error.message}`));
   scheduleScanner();
+  scheduleApplicationScanner();
   setTimeout(() => scan().catch((error) => log(`первый скан: ${error.message}`)), 3000);
 }
 

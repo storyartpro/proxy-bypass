@@ -65,6 +65,10 @@ const DEFAULTS = {
     "discord.com",
     "api.notion.com",
   ],
+  // Entries the user maintains by hand; `blocked` is materialised from these plus
+  // the channels discovered for tracked application profiles.
+  manualBlocked: null,
+  appProfiles: [],
   scanner: {
     enabled: true,
     intervalMin: 15,

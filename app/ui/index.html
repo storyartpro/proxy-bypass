@@ -29,6 +29,7 @@
   <button class="tab active" data-tab="proxies">Прокси</button>
   <button class="tab" data-tab="monitor">Мониторинг</button>
   <button class="tab" data-tab="blocked">Список блокировок</button>
+  <button class="tab" data-tab="apps">Приложения</button>
   <button class="tab" data-tab="servers">Серверы</button>
   <button class="tab" data-tab="logs">Журнал</button>
 </nav>
@@ -134,6 +135,38 @@
         <tbody></tbody>
       </table>
       <p class="muted" id="scan-result"></p>
+    </div>
+  </section>
+
+  <section id="tab-apps" class="tab-page">
+    <div class="card">
+      <div class="card-head">
+        <h2>Процессы и службы</h2>
+        <button id="apps-refresh">Обновить список</button>
+      </div>
+      <div class="row">
+        <input id="apps-search" placeholder="поиск по названию — например telegram" />
+        <select id="apps-kind">
+          <option value="process">процессы</option>
+          <option value="service">службы</option>
+        </select>
+        <span id="apps-hint" class="muted"></span>
+      </div>
+      <table class="grid" id="apps-available">
+        <thead><tr><th>Название</th><th>PID</th><th>Состояние</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Отслеживаемые приложения</h2>
+        <button id="apps-scan">Найти каналы сейчас</button>
+      </div>
+      <p class="muted">Пока приложение запущено, его сетевые каналы (IP и домены) собираются каждые 15 секунд и держатся в списке обхода через прокси. «Забыть» убирает каналы из списка.</p>
+      <table class="grid" id="apps-profiles">
+        <thead><tr><th>Название</th><th>Тип</th><th>Запущено</th><th>Каналов</th><th>Вкл</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
     </div>
   </section>
 
