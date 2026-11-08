@@ -24,13 +24,28 @@ test("mergeChannels deduplicates, ignores private addresses and reports addition
   assert.deepEqual(profile.discovered, ["104.253.1.146", "1.1.1.1", "cdn.example.com"]);
 });
 
-test("normaliseProfileInput validates the name and keeps a stable id", () => {
+test("normaliseProfileInput defaults to proxy mode and keeps a stable id", () => {
   const profile = normaliseProfileInput({ kind: "service", name: "DNSCache", label: "DNS Client" }, "fixed-id");
   assert.equal(profile.id, "fixed-id");
   assert.equal(profile.kind, "service");
   assert.equal(profile.name, "DNSCache");
   assert.equal(profile.enabled, true);
+  assert.equal(profile.mode, "proxy");
+  assert.equal(normaliseProfileInput({ name: "x", mode: "direct" }).mode, "direct");
+  assert.equal(normaliseProfileInput({ name: "x", mode: "garbage" }).mode, "proxy");
   assert.throws(() => normaliseProfileInput({ kind: "process", name: "" }));
+});
+
+test("a direct profile removes its channels from the bypass list", () => {
+  const manual = ["api.openai.com", "104.253.1.146", "chatgpt.com"];
+  const profiles = [
+    { id: "p", enabled: true, mode: "direct", discovered: ["api.openai.com", "104.253.1.146"] },
+    { id: "q", enabled: true, mode: "proxy", discovered: ["cdn.example.com"] },
+  ];
+  assert.deepEqual(mergeBlocked(manual, profiles), ["cdn.example.com", "chatgpt.com"]);
+  // a disabled direct profile must not remove anything
+  profiles[0].enabled = false;
+  assert.deepEqual(mergeBlocked(manual, profiles), ["104.253.1.146", "api.openai.com", "cdn.example.com", "chatgpt.com"]);
 });
 
 test("pidsForProfile matches processes by executable name", () => {

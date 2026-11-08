@@ -83,10 +83,12 @@ in the type union but is not offered in the UI — the workstation must not rout
   blocked list.
 
 The blocked list is materialised: `config.manualBlocked` holds user entries, each profile keeps its
-`discovered` channels, and `mergeBlocked()` produces `config.blocked` = manual ∪ enabled profiles.
-Removing or disabling a profile therefore removes exactly its channels and leaves manual entries
-untouched. Discovered endpoints become normal bypass targets, so they are also pushed to servers
-(domain pins and `add-ip` rules) when auto-push is enabled.
+`discovered` channels, and `mergeBlocked()` produces `config.blocked` = manual ∪ channels of
+proxy-mode profiles − channels of direct-mode profiles. A profile therefore has an explicit route
+switch: **proxy** contributes its endpoints to the bypass, **direct** subtracts them (direct wins
+even over manual entries). Removing or disabling a profile removes exactly its effect and leaves
+manual entries untouched. Discovered endpoints become normal bypass targets, so proxy-mode channels
+are also pushed to servers (domain pins and `add-ip` rules) when auto-push is enabled.
 
 ## Credentials at rest
 

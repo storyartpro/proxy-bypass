@@ -85,13 +85,19 @@ function renderApps() {
         <td>${item.kind === "service" ? "служба" : "процесс"}</td>
         <td>${item.running ? '<span class="badge ok">запущено</span>' : '<span class="badge warn">не запущено</span>'}</td>
         <td>${item.channels}</td>
+        <td>
+          <select data-app-mode="${item.id}">
+            <option value="proxy" ${item.mode === "direct" ? "" : "selected"}>через прокси</option>
+            <option value="direct" ${item.mode === "direct" ? "selected" : ""}>напрямую (IP)</option>
+          </select>
+        </td>
         <td><input type="checkbox" data-app-toggle="${item.id}" ${item.enabled === false ? "" : "checked"} /></td>
         <td class="actions">
           <button data-app-action="scan" data-app-id="${item.id}">Найти каналы</button>
           <button class="danger" data-app-action="untrack" data-app-id="${item.id}">Забыть</button>
         </td>
       </tr>`).join("")
-    : '<tr><td colspan="6" class="muted">пока ничего не отслеживается</td></tr>';
+    : '<tr><td colspan="7" class="muted">пока ничего не отслеживается</td></tr>';
 }
 
 async function refreshApps() {
@@ -791,6 +797,20 @@ function bind() {
       state.blocked = data.blocked;
       renderBlocked();
       await refreshApps();
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+
+  $("apps-profiles").addEventListener("change", async (event) => {
+    const select = event.target.closest("select[data-app-mode]");
+    if (!select) return;
+    try {
+      const data = await api("/api/apps/mode", { id: select.dataset.appMode, mode: select.value });
+      state.blocked = data.blocked;
+      renderBlocked();
+      await refreshApps();
+      toast(select.value === "proxy" ? "Приложение направлено через прокси" : "Приложение оставлено напрямую");
     } catch (error) {
       toast(error.message, true);
     }

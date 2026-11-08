@@ -166,20 +166,32 @@ export function mergeChannels(profile, channels) {
   return added;
 }
 
-/** Blocked list = manual entries + channels of every enabled application profile. */
+/** Blocked list = manual entries + channels of proxy-mode profiles, minus the
+ *  channels of profiles explicitly routed directly. */
 export function mergeBlocked(manual, profiles) {
   const result = new Set();
   for (const value of manual || []) {
     const target = sanitiseTarget(value) || String(value || "").trim().toLowerCase();
     if (target) result.add(target);
   }
+  const direct = new Set();
   for (const profile of profiles || []) {
     if (profile.enabled === false) continue;
+    if (profile.mode === "direct") {
+      for (const value of profile.discovered || []) {
+        const target = sanitiseTarget(value) || String(value || "").trim().toLowerCase();
+        if (target) direct.add(target);
+      }
+      continue;
+    }
     for (const value of profile.discovered || []) {
       const target = sanitiseTarget(value) || String(value || "").trim().toLowerCase();
       if (target) result.add(target);
     }
   }
+  // "Direct" wins: the user explicitly asked this application's endpoints to
+  // leave the bypass even if they are also in the manual list.
+  for (const value of direct) result.delete(value);
   return [...result].sort();
 }
 
@@ -194,6 +206,7 @@ export function normaliseProfileInput(input, providedId) {
     kind,
     name,
     label: String(input.label || name).slice(0, 120),
+    mode: input.mode === "direct" ? "direct" : "proxy",
     enabled: input.enabled !== false,
     discovered: Array.isArray(input.discovered) ? input.discovered.filter((item) => sanitiseTarget(item)) : [],
     createdAt: input.createdAt || new Date().toISOString(),

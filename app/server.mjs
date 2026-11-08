@@ -513,6 +513,17 @@ const routes = {
     scheduleApplicationScanner();
     return { ok: true, profiles: config.appProfiles, blocked: config.blocked };
   },
+  "POST /api/apps/mode": async (body) => {
+    const id = String(body.id || "");
+    const profile = (config.appProfiles || []).find((item) => item.id === id);
+    if (!profile) throw new Error("профиль не найден");
+    const mode = body.mode === "direct" ? "direct" : "proxy";
+    profile.mode = mode;
+    config = await writeConfig(config);
+    await rebuildBlocked();
+    log(`приложения: ${profile.name} -> ${mode === "proxy" ? "через прокси" : "напрямую"}`);
+    return { ok: true, profiles: config.appProfiles, blocked: config.blocked };
+  },
   "POST /api/apps/scan": async (body) => {
     ensureConfigSources();
     const result = await scanApplicationProfiles(body.id ? String(body.id) : undefined);

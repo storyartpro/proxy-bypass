@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-11-08
+
+### Added
+
+- **Per-application route switch**: every tracked process/service now has a mode — **через прокси**
+  (its discovered channels are pinned to the proxy) or **напрямую (IP)** (its channels are subtracted
+  from the blocked list, even when they also exist in the manual list — direct wins). The mode is
+  persisted and can be changed at any moment from the Приложения tab.
+- `POST /api/apps/mode` endpoint; `mergeBlocked()` now subtracts direct-mode channels.
+- Tests for the mode behaviour (20 tests total).
+
+### Verified
+
+- Tracking `AnyDesk.exe`: blocked list 1393 → 1394 (proxy mode).
+- Switching to direct: back to 1393; switching to proxy: 1394 again; forgetting: 1393.
+
 ## [0.3.0] - 2026-11-08
 
 ### Added
@@ -232,3 +248,4 @@ First public release.
 [0.1.10]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.10
 [0.2.0]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.2.0
 [0.3.0]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.3.0
+[0.3.1]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.3.1
