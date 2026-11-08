@@ -12,7 +12,8 @@ import { UpstreamManager } from "./core/upstreams.mjs";
 import { enableSystemProxy, disableSystemProxy, readSystemProxy } from "./core/system-proxy.mjs";
 import { loadConfig, loadConfigAsync, writeConfig, dataRoot, defaultConfig } from "./core/store.mjs";
 import * as servers from "./core/servers.mjs";
-import { normalizeTarget } from "./core/targets.mjs";
+import { normalizeTarget, parseTargetList } from "./core/targets.mjs";
+import { expandDomain } from "./core/lookup.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UI = path.join(HERE, "ui");
@@ -103,6 +104,34 @@ function syncForcedHosts() {
     if (!wanted.has(host)) router.force(host, false);
   }
   for (const host of wanted) router.force(host, true);
+}
+
+/** Add validated targets to the blocked list, persist and apply them. */
+async function addTargets(values) {
+  const added = [];
+  for (const raw of values || []) {
+    let target;
+    try {
+      target = normalizeTarget(raw);
+    } catch {
+      continue;
+    }
+    if (!config.blocked.includes(target.value)) {
+      config.blocked.push(target.value);
+      added.push(target.value);
+    }
+  }
+  if (added.length) {
+    config = await writeConfig(config);
+    syncForcedHosts();
+    log(`список: добавлено ${added.length} (${added.slice(0, 5).join(", ")}${added.length > 5 ? "…" : ""})`);
+    if (config.autoPushToServers) {
+      for (const server of config.servers) {
+        servers.pushBlockedList(server.alias, added).catch((error) => log(`push ${server.alias}: ${error.message}`));
+      }
+    }
+  }
+  return added;
 }
 
 async function activeUpstream() {
@@ -298,6 +327,55 @@ const routes = {
       log(`список: добавлен ${host} (${target.kind})`);
     }
     return { ok: true, kind: target.kind, blocked: config.blocked };
+  },
+  "POST /api/blocked/import": async (body) => {
+    const text = String(body.text ?? "");
+    const parsed = parseTargetList(text);
+    const added = await addTargets(parsed.valid.map((item) => item.value));
+    let expanded = null;
+    if (body.expandDomains && added.length) {
+      const upstream = await activeUpstream();
+      const expandedEntries = [];
+      const domains = added.filter((value) => !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)).slice(0, 10);
+      const details = [];
+      for (const domain of domains) {
+        try {
+          const result = await expandDomain(domain, { upstream });
+          details.push({ domain, ips: result.ips.length, subdomains: result.subdomains.length, source: result.source });
+          expandedEntries.push(...result.entries.map((item) => item.value));
+        } catch (error) {
+          details.push({ domain, error: error.message });
+        }
+      }
+      const expandedAdded = await addTargets(expandedEntries);
+      expanded = { domains: details, added: expandedAdded.length };
+    }
+    return {
+      ok: true,
+      added,
+      addedCount: added.length,
+      duplicates: parsed.duplicates,
+      invalid: parsed.invalid.slice(0, 30),
+      invalidCount: parsed.invalid.length,
+      expanded,
+      blocked: config.blocked,
+    };
+  },
+  "POST /api/blocked/expand": async (body) => {
+    const host = normalizeTarget(body.host).value;
+    const upstream = await activeUpstream();
+    const result = await expandDomain(host, { upstream });
+    const added = await addTargets(result.entries.map((item) => item.value));
+    return {
+      ok: true,
+      domain: result.domain,
+      source: result.source,
+      ips: result.ips,
+      subdomains: result.subdomains,
+      entriesTotal: result.entries.length,
+      added: added.length,
+      blocked: config.blocked,
+    };
   },
   "POST /api/blocked/remove": async (body) => {
     const host = String(body.host || "").trim().toLowerCase();

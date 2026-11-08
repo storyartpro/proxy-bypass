@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-11-08
+
+### Added
+
+- **Bulk import of the blocked list.** Paste any mix of domains, IPv4 addresses and CIDR
+  subnets separated by commas, semicolons, tabs, spaces or line breaks — Excel tables and full URLs
+  are accepted too (`host:port` is reduced to the host, URLs to their hostname). Duplicates are
+  skipped, unparsable tokens are reported back.
+- **Domain expansion.** For a given domain the app resolves its IPv4 addresses and discovers
+  subdomains (certificate transparency via crt.sh, plus probing common prefixes when CT is
+  unavailable), then writes the domain, all subdomains and all IPs into the blocked list. An
+  optional checkbox does the same for every domain in a bulk import.
+- New module `app/core/lookup.mjs`; fetching works directly and falls back to the active proxy when
+  DNS or CT endpoints are filtered.
+- Parser helpers `parseTargetList()` and unit tests for bulk parsing (14 tests total).
+
+### Fixed
+
+- The UI source in the working tree had been reverted to an older snapshot; it was restored from
+  the repository before adding the new controls.
+
 ## [0.1.10] - 2026-11-07
 
 ### Fixed
@@ -194,3 +215,4 @@ First public release.
 [0.1.8]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.8
 [0.1.9]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.9
 [0.1.10]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.1.10
+[0.2.0]: https://github.com/storyartpro/proxy-bypass/releases/tag/v0.2.0

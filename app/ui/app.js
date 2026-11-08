@@ -428,6 +428,49 @@ function bind() {
     }
   });
 
+  $("expand-run").addEventListener("click", async () => {
+    const host = $("expand-host").value.trim();
+    if (!host) return toast("Укажите домен для разворота", true);
+    $("expand-run").disabled = true;
+    $("expand-result").textContent = "разворачиваю: DNS, поддомены…";
+    try {
+      const data = await api("/api/blocked/expand", { host });
+      state.blocked = data.blocked;
+      renderBlocked();
+      $("expand-result").textContent = `добавлено ${data.added}: поддоменов ${data.subdomains.length}, IP ${data.ips.length} (источник: ${data.source})`;
+      toast(`Развёрнут ${data.domain}: +${data.added}`);
+    } catch (error) {
+      $("expand-result").textContent = "";
+      toast(`Разворот: ${error.message}`, true);
+    } finally {
+      $("expand-run").disabled = false;
+    }
+  });
+
+  $("import-run").addEventListener("click", async () => {
+    const text = $("import-text").value;
+    if (!text.trim()) return toast("Вставьте список для импорта", true);
+    $("import-run").disabled = true;
+    $("import-result").textContent = "импортирую…";
+    try {
+      const data = await api("/api/blocked/import", { text, expandDomains: $("import-expand").checked });
+      state.blocked = data.blocked;
+      renderBlocked();
+      const parts = [`добавлено ${data.addedCount}`];
+      if (data.duplicates) parts.push(`дубликатов ${data.duplicates}`);
+      if (data.invalidCount) parts.push(`не распознано ${data.invalidCount}`);
+      if (data.expanded) parts.push(`развёрнуто доменов: ${(data.expanded.domains || []).length}, дополнительно ${data.expanded.added}`);
+      $("import-result").textContent = parts.join(" · ");
+      $("import-text").value = "";
+      toast(`Импорт: добавлено ${data.addedCount}`);
+    } catch (error) {
+      $("import-result").textContent = "";
+      toast(`Импорт: ${error.message}`, true);
+    } finally {
+      $("import-run").disabled = false;
+    }
+  });
+
   $("blocked-table").addEventListener("click", async (event) => {
     const button = event.target.closest("button[data-host]");
     if (!button) return;

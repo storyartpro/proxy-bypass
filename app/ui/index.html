@@ -113,6 +113,22 @@
         <label class="switch"><input type="checkbox" id="auto-push" /> автоотправка на серверы</label>
       </div>
       <p class="muted">Поддерживаются домены (вместе с поддоменами), IPv4-адреса и подсети CIDR. IP-адреса на серверах добавляются в обход напрямую, без DNS.</p>
+
+      <div class="expand-row">
+        <input id="expand-host" placeholder="домен для разворота — например example.com" />
+        <button id="expand-run">Развернуть домен: поддомены + IP</button>
+        <span id="expand-result" class="muted"></span>
+      </div>
+
+      <div class="import-block">
+        <textarea id="import-text" rows="4" placeholder="Массовый импорт: домены, IP и подсети через запятую, точку с запятой, табы или с новой строки. Можно вставлять таблицу из Excel и ссылки — они будут очищены до домена."></textarea>
+        <div class="row">
+          <label class="switch"><input type="checkbox" id="import-expand" /> развернуть домены (поддомены + IP)</label>
+          <button id="import-run" class="primary">Импортировать список</button>
+          <span id="import-result" class="muted"></span>
+        </div>
+      </div>
+
       <table class="grid" id="blocked-table">
         <thead><tr><th>Адрес или подсеть</th><th>Тип</th><th></th></tr></thead>
         <tbody></tbody>

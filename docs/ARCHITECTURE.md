@@ -35,6 +35,13 @@ For every request the router asks `LocalRouter.routeFor(host, port)`:
 6. unknown domain → **direct now**, classification in the background. The next request already
    knows the answer, and no page waits for a probe.
 
+The blocked list accepts domains, IPv4 addresses and CIDR subnets. Bulk paste is parsed by
+`parseTargetList()` (comma, semicolon, whitespace, tabs, newlines; URLs and `host:port` cells are
+cleaned). `app/core/lookup.mjs` expands a domain: DNS `A`/`AAAA` records, subdomains from
+certificate transparency (crt.sh) plus common-prefix probing as a fallback, with every request
+falling back to the active SOCKS5 proxy when direct access is filtered. Expanded entries are added
+like any other target, so servers receive them as domain pins and `add-ip` rules.
+
 Classification (`classify`) probes the host directly and through the active proxy:
 
 - direct answer (< 500, not 403/451) → `direct`;

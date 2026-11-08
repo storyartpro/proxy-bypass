@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { ipInCidr, normalizeTarget, splitTargets } from "../app/core/targets.mjs";
+import { ipInCidr, normalizeTarget, parseTargetList, splitTargets } from "../app/core/targets.mjs";
 
 test("accepts domains and normalises case and trailing dot", () => {
   assert.deepEqual(normalizeTarget("Example.COM."), { kind: "domain", value: "example.com" });
@@ -36,4 +36,32 @@ test("splits a mixed list into domains and subnets", () => {
   const { domains, subnets } = splitTargets(["api.openai.com", "203.0.113.7", "198.51.100.0/24", "bad entry"]);
   assert.deepEqual(domains, ["api.openai.com"]);
   assert.deepEqual(subnets, ["203.0.113.7/32", "198.51.100.0/24"]);
+});
+
+test("parses a pasted list with commas, semicolons, tabs and newlines", () => {
+  const text = [
+    "gemini.google.com, api.openai.com;chatgpt.com",
+    "https://openrouter.ai/chat\tapi.anthropic.com",
+    "203.0.113.7 198.51.100.0/24",
+    "api.openai.com",
+  ].join("\n");
+  const parsed = parseTargetList(text);
+  const values = parsed.valid.map((item) => item.value);
+  assert.deepEqual(values, [
+    "gemini.google.com",
+    "api.openai.com",
+    "chatgpt.com",
+    "openrouter.ai",
+    "api.anthropic.com",
+    "203.0.113.7",
+    "198.51.100.0/24",
+  ]);
+  assert.equal(parsed.duplicates, 1);
+  assert.equal(parsed.invalid.length, 0);
+});
+
+test("cleans host:port cells and reports unparsable tokens", () => {
+  const parsed = parseTargetList("example.com:8443, bad_cell!, localhost");
+  assert.deepEqual(parsed.valid.map((item) => item.value), ["example.com"]);
+  assert.equal(parsed.invalid.length, 2);
 });

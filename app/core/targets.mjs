@@ -82,3 +82,54 @@ export function splitTargets(entries) {
   }
   return { domains, subnets };
 }
+
+function cleanToken(token) {
+  let value = String(token || "").trim().replace(/^["'`([{]+/, "").replace(/["'`)\]}.,;]+$/, "");
+  if (!value) return "";
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+    try {
+      value = new URL(value).hostname;
+    } catch {
+      return "";
+    }
+  }
+  // host:port → host (IPv6 keeps its colons and never matches this pattern)
+  const hostPort = /^([a-z0-9.-]+):(\d{1,5})$/i.exec(value);
+  if (hostPort) value = hostPort[1];
+  // URL path or query pasted inside a cell
+  const slash = value.indexOf("/");
+  if (slash > 0 && !/^\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}$/.test(value)) value = value.slice(0, slash);
+  return value.trim().toLowerCase().replace(/\.$/, "");
+}
+
+/**
+ * Parse a pasted list of targets: comma, semicolon, whitespace, tabs and line
+ * breaks are all accepted, as are URLs and "host:port" cells.
+ * @returns {{valid: Array<{kind:string,value:string}>, invalid: Array<{token:string,error:string}>, duplicates: number}}
+ */
+export function parseTargetList(text) {
+  const tokens = String(text ?? "")
+    .split(/[\s,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const seen = new Set();
+  const valid = [];
+  const invalid = [];
+  let duplicates = 0;
+  for (const token of tokens) {
+    let target;
+    try {
+      target = normalizeTarget(cleanToken(token));
+    } catch {
+      invalid.push({ token, error: "не домен, IP или подсеть" });
+      continue;
+    }
+    if (seen.has(target.value)) {
+      duplicates += 1;
+      continue;
+    }
+    seen.add(target.value);
+    valid.push(target);
+  }
+  return { valid, invalid, duplicates };
+}
