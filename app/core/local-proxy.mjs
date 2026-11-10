@@ -67,7 +67,7 @@ export const SEED_HOSTS = [
 // DeepSeek for sign-in and model listings; routing those requests through the
 // SOCKS5 made the account endpoint answer 403 and destabilised the host, so they
 // are always connected directly, as are loopback and mDNS names.
-export const ALWAYS_DIRECT = ["deepseek.com", "localhost", "127.0.0.1", "::1", "local"];
+export const ALWAYS_DIRECT = ["deepseek.com", "localhost", "127.0.0.1", "::1", "local", "msftconnecttest.com", "msftncsi.com"];
 
 /** Loopback / RFC1918 / link-local: never proxied, never probed. */
 export function isPrivateAddress(name) {

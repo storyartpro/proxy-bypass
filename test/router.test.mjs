@@ -34,6 +34,7 @@ test("loopback and the always-direct whitelist never use the proxy", async () =>
   assert.equal(await router.routeFor("localhost"), "direct");
   assert.equal(await router.routeFor("127.0.0.1"), "direct");
   assert.equal(await router.routeFor("deepseek.com"), "direct");
+  assert.equal(await router.routeFor("ipv4.msftconnecttest.com"), "direct");
 });
 
 test("unknown hosts start on the proxy in proxy mode", async () => {
