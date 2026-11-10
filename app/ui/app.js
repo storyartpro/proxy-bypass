@@ -132,6 +132,20 @@ function renderStatus(status) {
           : "прокси недоступен — временно напрямую"
         : "неизвестные адреса идут напрямую";
   }
+  const tun = status.transparent;
+  if (tun) {
+    $("tun-toggle").textContent = tun.running ? "Выключить прозрачный режим" : "Включить прозрачный режим";
+    $("tun-badge").textContent = tun.running ? "работает" : tun.installed ? "движок установлен" : "движок не установлен";
+    $("tun-badge").className = `badge${tun.running ? " ok" : ""}`;
+    $("tun-state").textContent = tun.running
+      ? `TUN ${tun.interface} · ${tun.address} · pid ${tun.pid}`
+      : tun.elevated
+        ? "права администратора есть"
+        : tun.wanted
+          ? "включён, но нужны права администратора"
+          : "нужны права администратора";
+    $("tun-elevate-row").hidden = tun.running || tun.elevated;
+  }
   renderTunnel(status.localTunnel);
 }
 
@@ -419,6 +433,32 @@ function bind() {
       await refreshStatus();
     } catch (error) {
       toast(`Маршрут: ${error.message}`, true);
+    }
+  });
+
+  $("tun-toggle").addEventListener("click", async () => {
+    const enable = !state.status?.transparent?.running;
+    $("tun-toggle").disabled = true;
+    try {
+      const data = await api("/api/transparent/toggle", { enabled: enable });
+      if (enable && data.wantsElevation) toast("Прозрачный режим: перезапустите приложение от администратора");
+      else toast(enable ? "Прозрачный перехват включён" : "Прозрачный перехват выключен");
+      await refreshStatus();
+    } catch (error) {
+      toast(`Прозрачный режим: ${error.message}`, true);
+    } finally {
+      $("tun-toggle").disabled = false;
+    }
+  });
+
+  $("tun-relaunch").addEventListener("click", async () => {
+    $("tun-relaunch").disabled = true;
+    try {
+      await api("/api/relaunch-admin", {});
+      toast("Перезапуск от администратора: подтвердите запрос Windows");
+    } catch (error) {
+      toast(`Перезапуск: ${error.message}`, true);
+      $("tun-relaunch").disabled = false;
     }
   });
 

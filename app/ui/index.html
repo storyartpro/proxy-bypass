@@ -114,6 +114,24 @@
         <span id="router-state" class="muted">—</span>
       </div>
     </div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Прозрачный перехват</h2>
+        <span class="muted" id="tun-badge">—</span>
+      </div>
+      <p class="muted">TUN-интерфейс (sing-box) забирает трафик приложений, которые не читают ни системный прокси, ни переменные среды: Telegram MTProto, QUIC/HTTP3, игры, апдейтеры. Нужны права администратора — приложение перезапустится через UAC.</p>
+      <div class="row">
+        <button id="tun-toggle">Включить прозрачный режим</button>
+        <span id="tun-state" class="muted">—</span>
+      </div>
+      <div class="row" id="tun-elevate-row" hidden>
+        <button id="tun-relaunch" class="primary">Перезапустить от администратора</button>
+        <span class="muted">без этого TUN-интерфейс создать нельзя</span>
+      </div>
+      <div class="row">
+        <span class="muted">TCP/UDP идут в локальный прокси; DNS — через шлюз; локальная сеть, SSH и сам прокси — напрямую.</span>
+      </div>
+    </div>
   </section>
 
   <section id="tab-blocked" class="tab-page">

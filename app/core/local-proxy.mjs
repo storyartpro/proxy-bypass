@@ -597,6 +597,74 @@ async function pipeTunnel(client, remote) {
   remote.on("close", close);
 }
 
+/**
+ * Read the beginning of a TLS ClientHello from a tunnelled socket.  The tunnel
+ * answers CONNECT before dialling, so the first client bytes arrive here and
+ * the caller can decide the route from the SNI domain instead of the address.
+ */
+function readTlsHello(client, timeoutMs) {
+  return new Promise((resolve) => {
+    let buffer = Buffer.alloc(0);
+    let done = false;
+    function finish(value) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      client.removeListener("data", onData);
+      resolve(value);
+    }
+    const timer = setTimeout(() => finish(buffer.length ? buffer : null), timeoutMs);
+    function onData(chunk) {
+      buffer = Buffer.concat([buffer, chunk]);
+      if (parseClientHelloSni(buffer) || buffer.length >= 4096) finish(buffer);
+    }
+    client.on("data", onData);
+  });
+}
+
+/** Extract the server_name extension of a TLS ClientHello, or null. */
+export function parseClientHelloSni(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 9) return null;
+  if (buffer[0] !== 0x16 || buffer[1] !== 0x03) return null;
+  let offset = 5;
+  if (buffer[offset] !== 0x01) return null;
+  const helloLength = buffer.readUIntBE(offset + 1, 3);
+  offset += 4;
+  const helloEnd = Math.min(buffer.length, offset + helloLength);
+  offset += 2 + 32;
+  if (offset >= helloEnd) return null;
+  offset += 1 + buffer[offset];
+  if (offset + 2 > helloEnd) return null;
+  offset += 2 + buffer.readUInt16BE(offset);
+  if (offset + 1 > helloEnd) return null;
+  offset += 1 + buffer[offset];
+  if (offset + 2 > helloEnd) return null;
+  const extensionEnd = Math.min(helloEnd, offset + 2 + buffer.readUInt16BE(offset));
+  offset += 2;
+  while (offset + 4 <= extensionEnd) {
+    const type = buffer.readUInt16BE(offset);
+    const length = buffer.readUInt16BE(offset + 2);
+    offset += 4;
+    if (type === 0) {
+      if (offset + 2 > extensionEnd) return null;
+      const listEnd = Math.min(extensionEnd, offset + 2 + buffer.readUInt16BE(offset));
+      offset += 2;
+      while (offset + 3 <= listEnd) {
+        const nameType = buffer[offset];
+        const nameLength = buffer.readUInt16BE(offset + 1);
+        offset += 3;
+        if (nameType === 0 && offset + nameLength <= listEnd) {
+          return buffer.toString("latin1", offset, offset + nameLength).toLowerCase();
+        }
+        offset += nameLength;
+      }
+      return null;
+    }
+    offset += length;
+  }
+  return null;
+}
+
 /** HTTP proxy (CONNECT + absolute-form) with per-host routing. */
 export function createLocalProxy({ router, port = DEFAULT_PORT, host = "127.0.0.1", log = () => {}, maxSocks = 6, tunnelTimeoutMs = 25000, stats = null }) {
   // The upstream provider throttles bursts: many parallel SOCKS5 handshakes turn
@@ -642,6 +710,25 @@ export function createLocalProxy({ router, port = DEFAULT_PORT, host = "127.0.0.
         if (method === "CONNECT") {
           const [name, portText] = target.split(":");
           const targetPort = Number(portText || 443);
+          if (isIpLiteral(name) && targetPort === 443) {
+            // Raw-IP tunnels come from clients that ignore the system proxy
+            // (TUN, Telegram, games).  The ClientHello still names the host, and
+            // the provider resolves names itself, so route by SNI when possible.
+            client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+            let hello = rest ? Buffer.from(rest, "latin1") : null;
+            if (!hello) hello = await readTlsHello(client, 1500);
+            const domain = hello ? parseClientHelloSni(hello) : null;
+            client.pause();
+            const host = domain || name;
+            const route = await router.routeFor(host, targetPort);
+            const remote =
+              route === "blocked"
+                ? await withSocksSlot(() => socksConnect(router.upstream, host, targetPort, tunnelTimeoutMs))
+                : await connectTcp(host, targetPort, router.timeoutMs);
+            if (hello) remote.write(hello);
+            await pipeTunnel(client, remote);
+            return;
+          }
           const verdict = await router.routeFor(name, targetPort);
           const remote =
             verdict === "blocked"

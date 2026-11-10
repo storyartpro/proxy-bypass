@@ -11,6 +11,16 @@ import { Monitor } from "./core/monitor.mjs";
 import { UpstreamManager } from "./core/upstreams.mjs";
 import { enableSystemProxy, disableSystemProxy, readSystemProxy } from "./core/system-proxy.mjs";
 import { enableEnvProxy, disableEnvProxy, envProxyStatus, proxyUrlFor } from "./core/env-proxy.mjs";
+import {
+  cidrsFor,
+  install as installTransparent,
+  isElevated,
+  isInstalled as transparentInstalled,
+  relaunchElevated,
+  start as startTransparent,
+  status as transparentStatus,
+  stop as stopTransparent,
+} from "./core/transparent.mjs";
 import { loadConfig, loadConfigAsync, writeConfig, dataRoot, defaultConfig } from "./core/store.mjs";
 import * as servers from "./core/servers.mjs";
 import { normalizeTarget, parseTargetList } from "./core/targets.mjs";
@@ -344,6 +354,86 @@ async function disableEnv() {
   log("ПК: переменные среды возвращены");
 }
 
+/** `ssh -G alias` prints the effective config; the hostname is what the tunnel
+ *  dials, and it must stay outside the TUN (a SOCKS5 provider rarely allows 22). */
+function sshEffectiveConfig(alias, timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    const proc = spawn("ssh", ["-G", alias], { windowsHide: true });
+    let out = "";
+    const timer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        /* already gone */
+      }
+      resolve("");
+    }, timeoutMs);
+    proc.stdout.on("data", (chunk) => {
+      out += chunk;
+    });
+    proc.on("error", () => {
+      clearTimeout(timer);
+      resolve("");
+    });
+    proc.on("exit", () => {
+      clearTimeout(timer);
+      resolve(out);
+    });
+  });
+}
+
+/** Addresses and ports that must never enter the tunnel: our own upstream
+ *  proxies and the SSH control-plane servers. */
+async function transparentExclusions() {
+  const hosts = (config.proxies || []).map((item) => item.host);
+  const ports = new Set();
+  for (const server of config.servers || []) {
+    const effective = await sshEffectiveConfig(server.alias);
+    const host = effective.match(/^hostname\s+(\S+)/m);
+    if (host) hosts.push(host[1]);
+    const port = effective.match(/^port\s+(\d+)/m);
+    if (port) ports.add(Number(port[1]));
+  }
+  return { cidrs: cidrsFor(hosts), ports: [...ports] };
+}
+
+async function transparentView() {
+  const base = await transparentStatus();
+  return { ...base, wanted: Boolean(config.transparentWanted) };
+}
+
+async function enableTransparent() {
+  if (!state.proxyRunning) throw new Error("локальный прокси не запущен");
+  if (!transparentInstalled()) {
+    log("прозрачный режим: скачиваю движок sing-box");
+    await installTransparent({ port: config.port, log });
+  }
+  if (!(await isElevated())) {
+    if (config.transparentWanted !== true) {
+      config.transparentWanted = true;
+      config = await writeConfig(config);
+    }
+    log("прозрачный режим: нужны права администратора для TUN");
+    return { ok: true, wantsElevation: true, ...(await transparentView()) };
+  }
+  const { cidrs, ports } = await transparentExclusions();
+  const result = await startTransparent({ port: config.port, directCidrs: cidrs, directPorts: ports, log });
+  if (config.transparentWanted !== true) {
+    config.transparentWanted = true;
+    config = await writeConfig(config);
+  }
+  return result;
+}
+
+async function disableTransparent() {
+  await stopTransparent();
+  if (config.transparentWanted !== false) {
+    config.transparentWanted = false;
+    config = await writeConfig(config);
+  }
+  log("прозрачный режим: выключен");
+}
+
 async function serverListStatuses(refresh = false) {
   const now = Date.now();
   const result = [];
@@ -385,11 +475,13 @@ function proxiesView() {
 async function apiStatus() {
   const pc = await pcStatus();
   const env = await envStatus();
+  const transparent = await transparentView();
   return {
     ok: true,
     startedAt,
     pc: { proxyRunning: state.proxyRunning, proxyEnabled: pc.pcProxyEnabled, envEnabled: Boolean(env.installed), port: config.port },
     router: { mode: router.defaultRoute, upstreamAvailable: router.upstreamAvailable, forcedCount: router.forced.size },
+    transparent: { installed: transparent.installed, elevated: transparent.elevated, running: transparent.running, wanted: transparent.wanted },
     upstreams: proxiesView(),
     blockedCount: config.blocked.length,
     blocked: config.blocked,
@@ -427,6 +519,38 @@ const routes = {
     const result = router.setDefaultRoute(body.mode);
     log(`маршрут по умолчанию: ${result.mode === "proxy" ? "через прокси" : "напрямую"}`);
     return { ok: true, ...result };
+  },
+  "GET /api/transparent": async () => ({ ok: true, ...(await transparentView()) }),
+  "POST /api/transparent/toggle": async (body) => {
+    if (Boolean(body.enabled)) await enableTransparent();
+    else await disableTransparent();
+    return { ok: true, ...(await transparentView()) };
+  },
+  "POST /api/transparent/install": async () => {
+    const result = await installTransparent({ port: config.port, log });
+    return { ok: true, ...result, ...(await transparentView()) };
+  },
+  "POST /api/relaunch-admin": async () => {
+    // The elevated copy can only bind the ports once this one lets go, so the
+    // shutdown happens first; UAC cancellation leaves the app closed, which the
+    // Start-menu shortcut recovers from.
+    setTimeout(async () => {
+      try {
+        await new Promise((resolve) => {
+          server.close(resolve);
+          setTimeout(resolve, 1500).unref?.();
+        });
+        await proxy.stop().catch(() => {});
+        await stopTransparent().catch(() => {});
+        await relaunchElevated({ port: Number(process.env.PROXY_APP_PORT || config.appPort || 8077) });
+        log("перезапуск с правами администратора");
+        process.exit(0);
+      } catch (error) {
+        log(`перезапуск с правами администратора: ${error.message}`);
+        process.exit(1);
+      }
+    }, 300);
+    return { ok: true, relaunching: true };
   },
   "GET /api/proxies": async () => ({ ok: true, ...proxiesView(), max: 5 }),
   "POST /api/proxies": async (body) => {
@@ -692,6 +816,7 @@ const routes = {
         monitor.stop();
         stopLocalTunnel();
         manager.stop();
+        await stopTransparent().catch((error) => log(`остановка прозрачного режима: ${error.message}`));
         await disableSystemProxy().catch((error) => log(`возврат прокси Windows: ${error.message}`));
         // The env layer must not point at a dead listener after the app exits;
         // `envProxyWanted` keeps the intent so the next start turns it back on.
@@ -915,6 +1040,15 @@ async function main() {
   // in the background. Check this before binding the routing proxy, otherwise
   // the proxy port conflict would kill the process first.
   if (await interfaceAlive(interfacePort)) {
+    // An elevated relaunch starts while the previous copy is still releasing
+    // the ports, so give it a moment instead of declaring a second instance.
+    if (process.env.PROXY_APP_RELAUNCH) {
+      for (let i = 0; i < 40 && (await interfaceAlive(interfacePort)); i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+  }
+  if (await interfaceAlive(interfacePort)) {
     log(`приложение уже запущено на 127.0.0.1:${interfacePort} — открываю окно`);
     openWindow();
     setTimeout(() => process.exit(0), 1500);
@@ -965,6 +1099,19 @@ async function main() {
   }
   if (config.envProxyWanted) {
     enableEnv().catch((error) => log(`автовключение переменных среды: ${error.message}`));
+  }
+  if (config.transparentWanted) {
+    isElevated()
+      .then((elevated) => {
+        if (!elevated) {
+          log("прозрачный режим: включён, но TUN требует прав администратора");
+          return null;
+        }
+        return transparentExclusions().then(({ cidrs, ports }) =>
+          startTransparent({ port: config.port, directCidrs: cidrs, directPorts: ports, log }),
+        );
+      })
+      .catch((error) => log(`автовключение прозрачного режима: ${error.message}`));
   }
 
   startInterface(interfacePort);

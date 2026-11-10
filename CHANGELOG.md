@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-10
+
+### Added
+
+- **Прозрачный перехват (TUN)** — `app/core/transparent.mjs` и карточка «Прозрачный перехват»:
+  движок sing-box 1.14.4 скачивается в `data/vendor/` при первом включении, поднимается
+  TUN-интерфейс `proxyapp` (172.19.0.1/30, gvisor, `auto_route`), и весь трафик программ, которые
+  не читают системный прокси и переменные среды, уходит в локальный маршрутизатор. DNS берётся из
+  маршрута по умолчанию, UDP/QUIC отклоняется, локальные сети, SSH-хосты и адреса upstream-прокси
+  идут напрямую, процесс `node.exe` исключён из перехвата (защита от петли).
+- **Восстановление SNI для «сырых» IP**: локальный прокси отвечает на CONNECT к IP:443, читает
+  TLS ClientHello, достаёт имя и открывает туннель по домену. SOCKS5-провайдер резолвит имя сам,
+  а прямые IP Telegram у него не работают — без этого TUN-трафик Telegram получал 502.
+- API: `GET /api/transparent`, `POST /api/transparent/toggle`, `POST /api/transparent/install`,
+  `POST /api/relaunch-admin`; `/api/status` теперь отдаёт `transparent.{installed,elevated,running,wanted}`.
+- UI: карточка «Прозрачный перехват» с индикатором, переключателем и подсказкой про права администратора.
+- 9 новых тестов (41 всего).
+
+### Changed
+
+- `status()` возвращает полный хвост лога sing-box (80 строк) вместо 12 — диагностика больше не теряется.
+- Перезапуск с правами администратора пишет `start-admin.cmd` с явными `PROXY_APP_DATA` и
+  `PROXY_APP_PORT`, поэтому elevated-копия работает с установленным профилем, а не с пустым.
+
+### Verified
+
+- TUN поднят, `transparent.elevated=true`: `curl --noproxy '*' https://api.telegram.org/` → 302 за
+  1,3 с, `/bot123:invalid/getMe` → 401, `example.com` → 200.
+- TLS 1.3 рукопожатие с `api.telegram.org` через CONNECT на IP `149.154.166.110` — то есть
+  SNI-маршрут работает и на реальном провайдере.
+
 ## [0.4.0] - 2026-11-10
 
 ### Added
