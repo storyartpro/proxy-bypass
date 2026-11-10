@@ -434,6 +434,10 @@ export class LocalRouter {
     this.timeoutMs = options.timeoutMs || 5000;
     this.verdicts = new Map();
     this.forced = new Set();
+    // "direct" keeps the historical behaviour (unknown hosts go direct and are
+    // classified in the background); "proxy" inverts it: everything except the
+    // always-direct whitelist starts on the proxy and is learned from there.
+    this.defaultRoute = "direct";
     // Set by the app: when no upstream proxy is healthy, forced hosts fall back
     // to a direct connection instead of failing with a 502.
     this.upstreamAvailable = true;
@@ -452,6 +456,7 @@ export class LocalRouter {
         this.verdicts.set(host, entry);
       }
       for (const host of data.forced || []) this.forced.add(String(host).toLowerCase());
+      if (data.defaultRoute === "proxy") this.defaultRoute = "proxy";
     } catch {
       /* first run */
     }
@@ -461,7 +466,7 @@ export class LocalRouter {
     const hosts = Object.fromEntries(this.verdicts);
     fs.writeFileSync(
       this.stateFile,
-      JSON.stringify({ version: 2, updatedAt: new Date().toISOString(), hosts, forced: [...this.forced] }, null, 2),
+      JSON.stringify({ version: 2, updatedAt: new Date().toISOString(), hosts, forced: [...this.forced], defaultRoute: this.defaultRoute }, null, 2),
     );
   }
 
@@ -489,6 +494,20 @@ export class LocalRouter {
     }
     this.save();
     return { host: name, forced: enabled, forcedHosts: [...this.forced] };
+  }
+
+  /** Switch the default route for hosts that have no verdict yet. */
+  setDefaultRoute(mode) {
+    const next = mode === "proxy" ? "proxy" : "direct";
+    this.defaultRoute = next;
+    this.save();
+    return {
+      mode: next,
+      description:
+        next === "proxy"
+          ? "через прокси; напрямую идут только локальные адреса и белый список"
+          : "напрямую; через прокси идут только известные блокировки",
+    };
   }
 
   get blockedCount() {
@@ -549,9 +568,10 @@ export class LocalRouter {
       this.save();
       return ipResult.verdict === "blocked" ? "blocked" : "direct";
     }
-    // Never make a page wait seconds for a first-time decision: send it direct
-    // now and classify in the background, so the next request already knows.
+    // Never make a page wait seconds for a first-time decision: pick the default
+    // route now and classify in the background, so the next request already knows.
     this.learnOne(host).catch(() => {});
+    if (this.defaultRoute === "proxy" && this.upstreamAvailable !== false) return "blocked";
     return "direct";
   }
 

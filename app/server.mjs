@@ -10,6 +10,7 @@ import { createLocalProxy, LocalRouter, classify, readUpstream } from "./core/lo
 import { Monitor } from "./core/monitor.mjs";
 import { UpstreamManager } from "./core/upstreams.mjs";
 import { enableSystemProxy, disableSystemProxy, readSystemProxy } from "./core/system-proxy.mjs";
+import { enableEnvProxy, disableEnvProxy, envProxyStatus, proxyUrlFor } from "./core/env-proxy.mjs";
 import { loadConfig, loadConfigAsync, writeConfig, dataRoot, defaultConfig } from "./core/store.mjs";
 import * as servers from "./core/servers.mjs";
 import { normalizeTarget, parseTargetList } from "./core/targets.mjs";
@@ -42,7 +43,17 @@ const router = new LocalRouter({ upstream: { host: "127.0.0.1", port: 9, auth: f
 const stats = { active: 0, total: 0 };
 const proxy = createLocalProxy({ router, port: config.port, log, stats });
 const monitor = new Monitor({ manager, log, stats });
-const state = { proxyRunning: false, pcProxyEnabled: false, pcProxyError: null, scannerTimer: null, appsTimer: null, lastScan: null };
+const state = {
+  proxyRunning: false,
+  pcProxyEnabled: false,
+  pcProxyError: null,
+  envProxy: null,
+  envProxyAt: 0,
+  envProxyError: null,
+  scannerTimer: null,
+  appsTimer: null,
+  lastScan: null,
+};
 
 /** Fill/refresh SOCKS5 credentials from the secrets file.
  *
@@ -295,6 +306,44 @@ async function disablePc() {
   log("ПК: системный прокси выключен");
 }
 
+/**
+ * Environment variables are the second coverage layer: they reach command-line
+ * tools (curl, git, pip, npm, Python requests) that ignore WinINET settings.
+ * Reading them spawns PowerShell, so the status is cached between UI polls.
+ */
+async function envStatus(force = false) {
+  if (!force && state.envProxy && Date.now() - state.envProxyAt < 30_000) return state.envProxy;
+  try {
+    state.envProxy = await envProxyStatus(config.port);
+    state.envProxyAt = Date.now();
+    state.envProxyError = null;
+  } catch (error) {
+    state.envProxyError = error.message;
+  }
+  return state.envProxy || { installed: false, proxyUrl: proxyUrlFor(config.port), error: state.envProxyError };
+}
+
+async function enableEnv() {
+  if (!state.proxyRunning) throw new Error("локальный прокси не запущен");
+  await enableEnvProxy(config.port);
+  state.envProxyAt = 0;
+  if (!config.envProxyWanted) {
+    config.envProxyWanted = true;
+    config = await writeConfig(config);
+  }
+  log(`ПК: переменные среды направлены на ${proxyUrlFor(config.port)}`);
+}
+
+async function disableEnv() {
+  await disableEnvProxy(config.port);
+  state.envProxyAt = 0;
+  if (config.envProxyWanted !== false) {
+    config.envProxyWanted = false;
+    config = await writeConfig(config);
+  }
+  log("ПК: переменные среды возвращены");
+}
+
 async function serverListStatuses(refresh = false) {
   const now = Date.now();
   const result = [];
@@ -335,10 +384,12 @@ function proxiesView() {
 
 async function apiStatus() {
   const pc = await pcStatus();
+  const env = await envStatus();
   return {
     ok: true,
     startedAt,
-    pc: { proxyRunning: state.proxyRunning, proxyEnabled: pc.pcProxyEnabled, port: config.port },
+    pc: { proxyRunning: state.proxyRunning, proxyEnabled: pc.pcProxyEnabled, envEnabled: Boolean(env.installed), port: config.port },
+    router: { mode: router.defaultRoute, upstreamAvailable: router.upstreamAvailable, forcedCount: router.forced.size },
     upstreams: proxiesView(),
     blockedCount: config.blocked.length,
     blocked: config.blocked,
@@ -359,6 +410,23 @@ const routes = {
     if (want) await enablePc();
     else await disablePc();
     return { ok: true, ...(await pcStatus()) };
+  },
+  "GET /api/env": async () => ({ ok: true, ...(await envStatus(true)) }),
+  "POST /api/env/toggle": async (body) => {
+    if (Boolean(body.enabled)) await enableEnv();
+    else await disableEnv();
+    return { ok: true, ...(await envStatus(true)) };
+  },
+  "GET /api/router": async () => ({
+    ok: true,
+    mode: router.defaultRoute,
+    upstreamAvailable: router.upstreamAvailable,
+    forcedCount: router.forced.size,
+  }),
+  "POST /api/router/mode": async (body) => {
+    const result = router.setDefaultRoute(body.mode);
+    log(`маршрут по умолчанию: ${result.mode === "proxy" ? "через прокси" : "напрямую"}`);
+    return { ok: true, ...result };
   },
   "GET /api/proxies": async () => ({ ok: true, ...proxiesView(), max: 5 }),
   "POST /api/proxies": async (body) => {
@@ -625,6 +693,9 @@ const routes = {
         stopLocalTunnel();
         manager.stop();
         await disableSystemProxy().catch((error) => log(`возврат прокси Windows: ${error.message}`));
+        // The env layer must not point at a dead listener after the app exits;
+        // `envProxyWanted` keeps the intent so the next start turns it back on.
+        await disableEnvProxy(config.port).catch((error) => log(`возврат переменных среды: ${error.message}`));
         await Promise.race([
           new Promise((resolve) => proxy.stop().then(resolve).catch(() => resolve())),
           new Promise((resolve) => setTimeout(resolve, 2000)),
@@ -891,6 +962,9 @@ async function main() {
   // bypass back only if it was on when the app was closed.
   if (config.pcProxyWanted) {
     enablePc().catch((error) => log(`автовключение прокси на ПК: ${error.message}`));
+  }
+  if (config.envProxyWanted) {
+    enableEnv().catch((error) => log(`автовключение переменных среды: ${error.message}`));
   }
 
   startInterface(interfacePort);

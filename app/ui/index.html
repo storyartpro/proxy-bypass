@@ -94,6 +94,26 @@
         <button id="proxy-cancel" hidden>Отмена</button>
       </div>
     </div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Охват ПК</h2>
+        <span class="muted" id="coverage-note">две обратимые настройки Windows</span>
+      </div>
+      <p class="muted">Системный прокси охватывает браузеры и WinINET-приложения. Переменные среды добавляют консоль: curl, git, pip, npm, Python. Сырые сокеты (MTProto, QUIC, игры) не охвачены ни тем, ни другим — для них нужен прозрачный перехват.</p>
+      <div class="row">
+        <button id="env-toggle">Включить переменные среды</button>
+        <span id="env-state" class="muted">—</span>
+      </div>
+      <div class="row">
+        <label class="inline">Маршрут по умолчанию
+          <select id="router-mode">
+            <option value="direct">напрямую; блокировки — через прокси</option>
+            <option value="proxy">через прокси; белый список — напрямую</option>
+          </select>
+        </label>
+        <span id="router-state" class="muted">—</span>
+      </div>
+    </div>
   </section>
 
   <section id="tab-blocked" class="tab-page">

@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-10
+
+### Added
+
+- **PC-wide environment proxy** (`app/core/env-proxy.mjs`): one switch writes `HTTP_PROXY`,
+  `HTTPS_PROXY` and `ALL_PROXY` into the current user's environment (HKCU\Environment) and
+  broadcasts `WM_SETTINGCHANGE`, so console tools, git, pip, npm and Python requests reach the local
+  router. `NO_PROXY` is preserved and always contains loopback. Previous values are backed up to
+  `env-proxy-backup.json`; disabling restores them exactly, or removes only the three managed
+  variables when no backup exists.
+- **Default route mode** in `LocalRouter`: `direct` (historical) or `proxy`. In `proxy` mode an
+  unknown host goes through the proxy immediately instead of being tried directly first; loopback,
+  private addresses and the always-direct whitelist (`deepseek.com`) still go direct, and the route
+  falls back to direct while the upstream is unavailable.
+- API: `GET /api/env`, `POST /api/env/toggle`, `GET /api/router`, `POST /api/router/mode`;
+  `/api/status` now reports `pc.envEnabled` and `router.{mode,upstreamAvailable,forcedCount}`.
+- UI: «Охват ПК» card on the Прокси tab — environment toggle and default-route selector.
+- 12 new tests (32 total).
+
+### Changed
+
+- Shutdown turns the environment proxy off before exiting, while the `envProxyWanted` flag keeps the
+  next start re-enabling it.
+
+### Verified
+
+- Telegram gateway (Hermes) connects through the app: `telegram.proxy_url: http://127.0.0.1:38080`
+  in each profile's `config.yaml`; `✓ telegram connected` for default, insideme and service24.
+
 ## [0.3.1] - 2026-11-08
 
 ### Added

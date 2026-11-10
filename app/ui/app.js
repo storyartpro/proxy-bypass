@@ -119,6 +119,19 @@ function renderStatus(status) {
     ? `активный прокси: ${status.upstreams.active.name} (${status.upstreams.active.endpoint})`
     : "нет доступных прокси";
   $("footer-state").textContent = `порт прокси ${status.pc.port} · адресов в списке: ${status.blockedCount} · обновлено ${new Date().toLocaleTimeString("ru-RU")} · закрытие окна оставляет приложение в трее`;
+  $("env-toggle").textContent = status.pc.envEnabled ? "Выключить переменные среды" : "Включить переменные среды";
+  $("env-state").textContent = status.pc.envEnabled
+    ? `HTTP_PROXY, HTTPS_PROXY, ALL_PROXY → 127.0.0.1:${status.pc.port}`
+    : "не заданы";
+  if (status.router) {
+    $("router-mode").value = status.router.mode === "proxy" ? "proxy" : "direct";
+    $("router-state").textContent =
+      status.router.mode === "proxy"
+        ? status.router.upstreamAvailable
+          ? "неизвестные адреса сразу идут через прокси"
+          : "прокси недоступен — временно напрямую"
+        : "неизвестные адреса идут напрямую";
+  }
   renderTunnel(status.localTunnel);
 }
 
@@ -381,6 +394,31 @@ function bind() {
       toast(`ПК: ${error.message}`, true);
     } finally {
       $("pc-toggle").disabled = false;
+    }
+  });
+
+  $("env-toggle").addEventListener("click", async () => {
+    const enable = !(state.status?.pc?.envEnabled);
+    $("env-toggle").disabled = true;
+    try {
+      const data = await api("/api/env/toggle", { enabled: enable });
+      toast(data.installed ? "Переменные среды направлены на приложение" : "Переменные среды возвращены");
+      await refreshStatus();
+    } catch (error) {
+      toast(`Переменные среды: ${error.message}`, true);
+    } finally {
+      $("env-toggle").disabled = false;
+    }
+  });
+
+  $("router-mode").addEventListener("change", async () => {
+    const mode = $("router-mode").value;
+    try {
+      const data = await api("/api/router/mode", { mode });
+      toast(data.description || `Маршрут по умолчанию: ${data.mode}`);
+      await refreshStatus();
+    } catch (error) {
+      toast(`Маршрут: ${error.message}`, true);
     }
   });
 
