@@ -1079,26 +1079,40 @@ async function main() {
   if (upstream) router.upstream = upstream;
   router.upstreamAvailable = Boolean(upstream);
 
-  try {
-    await proxy.start();
-  } catch (error) {
-    if (error && error.code === "EADDRINUSE") {
-      log(`порт ${config.port} занят другим экземпляром — открываю его окно`);
-      openWindow();
-      setTimeout(() => process.exit(0), 1500);
-      return;
+  // A foreign process may hold the routing port at logon (a leftover helper
+  // from another tool).  Exiting here used to kill the whole app, so keep the
+  // interface alive and retry until the port is free.
+  async function startRouting(attempt = 1) {
+    try {
+      await proxy.start();
+    } catch (error) {
+      if (error && error.code === "EADDRINUSE") {
+        state.proxyRunning = false;
+        log(`порт ${config.port} занят другим процессом — жду освобождения (попытка ${attempt})`);
+        return false;
+      }
+      throw error;
     }
-    throw error;
+    state.proxyRunning = true;
+    log(`локальный прокси слушает 127.0.0.1:${config.port}`);
+    // "Закрыть полностью" restores Windows settings; the next start brings the
+    // bypass back only if it was on when the app was closed.
+    if (config.pcProxyWanted) {
+      enablePc().catch((error) => log(`автовключение прокси на ПК: ${error.message}`));
+    }
+    if (config.envProxyWanted) {
+      enableEnv().catch((error) => log(`автовключение переменных среды: ${error.message}`));
+    }
+    return true;
   }
-  state.proxyRunning = true;
-  log(`локальный прокси слушает 127.0.0.1:${config.port}`);
-  // "Закрыть полностью" restores Windows settings; the next start brings the
-  // bypass back only if it was on when the app was closed.
-  if (config.pcProxyWanted) {
-    enablePc().catch((error) => log(`автовключение прокси на ПК: ${error.message}`));
-  }
-  if (config.envProxyWanted) {
-    enableEnv().catch((error) => log(`автовключение переменных среды: ${error.message}`));
+  if (!(await startRouting())) {
+    const retry = setInterval(async () => {
+      try {
+        if (await startRouting()) clearInterval(retry);
+      } catch (error) {
+        log(`повторная попытка занять порт ${config.port}: ${error.message}`);
+      }
+    }, 10_000);
   }
   if (config.transparentWanted) {
     isElevated()
