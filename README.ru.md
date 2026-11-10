@@ -111,6 +111,15 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 Тихий запуск без консоли — `proxy-app.vbs`.
 
+Сборка Windows-приложения (одно окно, ярлык в «Пуск»):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File launcher\build.ps1
+```
+
+`launcher\dist\ProxyBypass.exe` — нативное окно на WebView2, один экземпляр на пользователя,
+трей и «Выход» с остановкой сервера. Требует прав администратора: без них TUN не поднять.
+
 ## Настройка
 
 Настройки лежат в `data/config.json` (каталог `data/` игнорируется git и содержит локальные

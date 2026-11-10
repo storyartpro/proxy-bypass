@@ -963,6 +963,7 @@ const TRAY_SCRIPT = fileURLToPath(new URL("./tray.ps1", import.meta.url));
 
 /** Tray icon: keeps the app reachable after the window is closed. */
 function startTray() {
+  if (process.env.PROXY_APP_NO_TRAY === "1") return;
   if (process.platform !== "win32" || !fs.existsSync(TRAY_SCRIPT)) return;
   try {
     const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";

@@ -7,3 +7,5 @@ ui-*.png
 *.bak.*
 .DS_Store
 Thumbs.db
+launcher/lib/
+launcher/dist/
